@@ -8,15 +8,48 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-export const fetcher = async (url: string) => {
-  const response = await fetch(url);
+export const fetcher = (url: string) => fetch(url).then((res) => res.json());
 
-  if (!response.ok) {
-    const { code, cause } = await response.json();
-    throw new ChatSDKError(code as ErrorCode, cause);
+export const localStorageKey = "chat_sidebar_state";
+
+// Utility functions for managing chat stop state
+export const setChatStopState = (chatId: string, isStopped: boolean) => {
+  if (typeof window !== 'undefined') {
+    const key = `chat_stop_${chatId}`;
+    if (isStopped) {
+      localStorage.setItem(key, Date.now().toString());
+    } else {
+      localStorage.removeItem(key);
+    }
+  }
+};
+
+export const getChatStopState = (chatId: string): boolean => {
+  if (typeof window === 'undefined') return false;
+
+  const key = `chat_stop_${chatId}`;
+  const stopTime = localStorage.getItem(key);
+
+  if (!stopTime) return false;
+
+  // Auto-clear stop state after 10 seconds
+  const timeDiff = Date.now() - parseInt(stopTime);
+  if (timeDiff > 10000) {
+    localStorage.removeItem(key);
+    return false;
   }
 
-  return response.json();
+  return true;
+};
+
+export const clearChatResumeState = (chatId: string) => {
+  if (typeof window === 'undefined') return;
+  
+  // Clear all resume-related localStorage keys for this chat
+  localStorage.removeItem(`chat_resume_${chatId}`);
+  localStorage.removeItem(`chat_state_${chatId}`);
+  localStorage.setItem(`chat_resume_${chatId}`, 'stopped');
+  localStorage.setItem('shouldAutoResume', 'false');
 };
 
 export async function fetchWithErrorHandlers(

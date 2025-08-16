@@ -33,29 +33,72 @@ function createOptimizedModel(baseModel: LanguageModelV1, config: ModelConfig = 
   return baseModel;
 }
 
-// Type-safe language models object
+// Type-safe language models object with maximum performance configurations
 const productionModels: Record<string, LanguageModelV1> = {
-  // DeepSeek models
-  'chat-model': deepseek('deepseek-coder'),
+  // DeepSeek models - optimized for maximum context and performance
+  'chat-model': deepseek('deepseek-coder', {
+    // Using correct property names for DeepSeek
+    temperature: 0.7,
+    topP: 0.95,
+    maxTokens: 32768, // Maximum context window
+  }),
   'chat-model-reasoning': createOptimizedModel(
-    deepseek('deepseek-reasoner'), 
-    { reasoning: true, reasoningTag: 'think' }
+    deepseek('deepseek-reasoner', {
+      temperature: 0.7,
+      topP: 0.95,
+      maxTokens: 32768, // Maximum for detailed reasoning
+      presencePenalty: 0.1, // Encourage diverse reasoning
+      frequencyPenalty: 0.1, // Reduce repetition in reasoning
+    }), 
+    { 
+      reasoning: true, 
+      reasoningTag: 'think',
+      persistReasoning: true, // Keep reasoning active throughout response
+      reasoningDepth: 'deep' // Enable deeper reasoning analysis
+    }
   ),
-  'vision-model': deepseek('deepseek-vl'),
+  'vision-model': deepseek('deepseek-vl', {
+    temperature: 0.7,
+    topP: 0.95,
+    maxTokens: 16384, // Large context for vision tasks
+  }),
   'web-search-model': createOptimizedModel(
-    deepseek('deepseek-coder'),
+    deepseek('deepseek-coder', {
+      temperature: 0.7,
+      topP: 0.9,
+      maxTokens: 24576, // Large context for search results
+    }),
     { reasoning: true, reasoningTag: 'search' }
-  ), // New model for web search
+  ),
 
-  // Groq models
-  'chat-model1': groq('openai/gpt-oss-120b'),
-  'chat-model2': groq('meta-llama/llama-4-scout-17b-16e-instruct'),
+  // Groq models - maximum performance settings
+  'chat-model1': groq('llama-3.1-70b-versatile', {
+    // Using correct property names for Groq
+    temperature: 0.7,
+    topP: 0.9,
+    maxCompletionTokens: 32768, // Groq uses maxCompletionTokens
+  }),
+  'chat-model2': groq('llama-3.1-405b-reasoning', {
+    temperature: 0.8,
+    topP: 0.95,
+    maxCompletionTokens: 32768, // Maximum for 405B model
+  }),
   'chat-model3': createOptimizedModel(
-    groq('qwen/qwen3-32b'), 
+    groq('llama-3.1-70b-versatile', {
+      temperature: 0.7,
+      topP: 0.9,
+      maxCompletionTokens: 32768, // Large context for reasoning
+    }), 
     { reasoning: true, reasoningTag: 'think' }
   ),
-  'title-model': groq('meta-llama/llama-3.2-3b-instruct'),
-  'artifact-model': deepseek('deepseek-coder'),
+  'title-model': groq('llama-3.1-8b-instant', {
+    temperature: 0.3,
+    maxCompletionTokens: 512, // Sufficient for titles
+  }),
+  'artifact-model': deepseek('deepseek-coder', {
+    temperature: 0.5,
+    maxTokens: 16384, // Large context for code generation
+  }),
 };
 
 const testModels: Record<string, LanguageModelV1> = {

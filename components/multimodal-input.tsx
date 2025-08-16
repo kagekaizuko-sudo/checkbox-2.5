@@ -26,7 +26,9 @@ import { AnimatePresence, motion } from "framer-motion";
 import { ArrowDownIcon } from "lucide-react";
 import { useScrollToBottom } from "@/hooks/use-scroll-to-bottom";
 import type { VisibilityType } from "./visibility-selector";
-import { WebSearchButton } from "./web-search-button";
+import { WebSearchButton } from './web-search-button';
+import { useWebSearchState } from '@/hooks/use-web-search-state';
+import { WebSearchDisplay } from './web-search-display';
 import type { Session } from "next-auth";
 import { cn } from "@/lib/utils";
 
@@ -182,48 +184,77 @@ function PureMultimodalInput({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploadQueue, setUploadQueue] = useState<Array<string>>([]);
 
-  // 🔥 OLD PATTERN: Simple submitForm with URL history management
-  const submitForm = useCallback(() => {
-    // 🔥 KEY FIX: URL history management (same as old code)
-    window.history.replaceState({}, "", `/chat/${chatId}`);
-    
-    handleSubmit(undefined, {
-      experimental_attachments: attachments,
-    });
-    setAttachments([]);
-    setLocalStorageInput("");
-    resetHeight();
-    setCurrentPlaceholderIndex(0);
-    setDisplayedPlaceholder("");
-    if (width && width > 768) {
-      textareaRef.current?.focus();
-    }
-  }, [attachments, handleSubmit, setAttachments, setLocalStorageInput, width, chatId]);
+  const webSearchState = useWebSearchState();
 
-  // 🔥 NEW: Web search with same pattern
-  const handleWebSearch = useCallback(() => {
-    const trimmedInput = input.trim();
-    if (!trimmedInput) return;
-    
-    // URL history management
-    window.history.replaceState({}, "", `/chat/${chatId}`);
-    
-    append({
-      id: generateUUID(),
-      role: 'user',
-      parts: [{ text: input }],
-      experimental_attachments: attachments,
-      experimental_toolCall: 'searchWeb',
-    });
-    setAttachments([]);
-    setLocalStorageInput("");
-    resetHeight();
-    setCurrentPlaceholderIndex(0);
-    setDisplayedPlaceholder("");
-    if (width && width > 768) {
-      textareaRef.current?.focus();
-    }
-  }, [input, attachments, append, setAttachments, setLocalStorageInput, width, chatId]);
+  // 🔥 OLD PATTERN: Simple submitForm with URL history management
+  const submitForm = useCallback(
+    async (event?: React.FormEvent<HTMLFormElement>) => {
+      event?.preventDefault();
+
+      if (!input.trim() && attachments.length === 0) return;
+
+      // Handle web search mode
+      if (webSearchState.isActive && input.trim()) {
+        webSearchState.startSearch(input.trim());
+
+        try {
+          const response = await fetch('/api/web-search', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              query: input.trim(),
+            }),
+          });
+
+          const data = await response.json();
+
+          if (response.ok && data.results) {
+            webSearchState.setResults(data.results, data.answer);
+
+            // Create a comprehensive search result message
+            const searchSummary = `Here are the web search results for "${input.trim()}":\n\n${data.answer ? `**Quick Answer:** ${data.answer}\n\n` : ''}**Sources:**\n${data.results.map((result: any, index: number) =>
+              `${index + 1}. **${result.title}**\n   ${result.content}\n   Source: [${new URL(result.url).hostname}](${result.url})\n`
+            ).join('\n')}`;
+
+            // Add the search results as a message
+            const searchMessage = {
+              id: generateUUID(),
+              role: 'assistant' as const,
+              content: searchSummary,
+            };
+
+            setMessages(prev => [...prev, {
+              id: generateUUID(),
+              role: 'user',
+              content: `Search: ${input.trim()}`,
+            }, searchMessage]);
+          } else {
+            webSearchState.setError(data.error || 'Search failed');
+          }
+        } catch (error) {
+          webSearchState.setError('Network error occurred');
+        }
+
+        setInput('');
+        return;
+      }
+
+      handleSubmit(event, {
+        experimental_attachments: attachments,
+      });
+
+      setAttachments([]);
+      setInput('');
+
+      if (width && width > 768) {
+        textareaRef.current?.focus();
+      }
+    },
+    [input, attachments, handleSubmit, setAttachments, setInput, width, webSearchState, setMessages],
+  );
+
 
   const uploadFile = async (file: File) => {
     const formData = new FormData();
@@ -330,7 +361,7 @@ function PureMultimodalInput({
                 session={session}
                 selectedModelId={selectedModelId}
                 onModelChange={onModelChange} // 🔥 Simple pass-through
-                onWebSearch={handleWebSearch}
+                onWebSearch={onWebSearch}
               />
             </motion.div>
           </div>
@@ -413,7 +444,7 @@ function PureMultimodalInput({
             session={session}
             selectedModelId={selectedModelId}
             onModelChange={onModelChange} // 🔥 Simple pass-through
-            onWebSearch={handleWebSearch}
+            onWebSearch={onWebSearch}
           />
         </motion.div>
       )}
@@ -469,7 +500,7 @@ function CenteredInputForm({
         tabIndex={-1}
       />
 
-      <div 
+      <div
         className={cn(
           "flex w-full flex-col rounded-[1.6rem] bg-muted overflow-hidden cursor-text gap-2.5",
           className
@@ -531,14 +562,26 @@ function CenteredInputForm({
             )}
           </div>
         </div>
-        
+
         <div className="flex justify-between items-center rounded-b-2xl pl-2 pr-2 pb-2">
           <div className="flex items-center gap-1.5">
             <AttachmentsButton fileInputRef={fileInputRef} status={status} />
-             <ThinkButton selectedModelId={selectedModelId} onModelChange={onModelChange!} />
+            <ThinkButton
+               selectedModelId={selectedModelId}
+               onModelChange={onModelChange!}
+               onThinkModeToggle={(isThinking) => {
+                 // Store thinking mode state without affecting UI model selector
+                 if (isThinking) {
+                   sessionStorage.setItem('thinkingMode', 'true');
+                 } else {
+                   sessionStorage.removeItem('thinkingMode');
+                 }
+               }}
+             />
               <WebSearchButton
                 status={status}
                 onWebSearch={onWebSearch}
+                isActive={webSearchState.isActive}
               />
           </div>
           <div className="flex items-center gap-1">
@@ -586,13 +629,23 @@ function BottomInputForm({
     }
   }, [status, input, submitForm]);
 
+  const webSearchState = useWebSearchState();
+
   return (
-    <div 
+    <div
       className={cn(
         "flex w-full flex-col grow rounded-[1.6rem] bg-muted overflow-x-auto cursor-text gap-2.5",
         className
       )}
     >
+      <WebSearchDisplay
+        isSearching={webSearchState.isSearching}
+        results={webSearchState.results}
+        answer={webSearchState.answer}
+        query={webSearchState.query}
+        error={webSearchState.error}
+      />
+
       {(attachments?.length > 0 || uploadQueue.length > 0) && (
         <div className="p-2 flex flex-row gap-2 overflow-x-auto items-end border-b-[2.5px] border-[rgba(6, 182, 212, 0.2)] dark:border-[rgba(0, 255, 255, 0.2)]">
           {attachments?.map((attachment) => (
@@ -607,7 +660,7 @@ function BottomInputForm({
           ))}
         </div>
       )}
-      
+
       <div className="flex w-full flex-col p-2">
         <div className="relative">
           <Textarea
@@ -621,21 +674,32 @@ function BottomInputForm({
             )}
             rows={1}
             autoFocus
-            placeholder={!input ? "Ask Anything" : ""}
+            placeholder={webSearchState.isActive ? "Enter your search query..." : "Ask Anything"}
             onKeyDown={handleKeyDown}
             style={{ paddingLeft: '10px', backgroundColor: 'transparent !important' }}
           />
         </div>
       </div>
-      
+
       <div className="flex justify-between w-full pt-12 cursor-auto gap-1">
         <div className="absolute bottom-0 p-2 w-full rounded-b-[1.6rem] flex justify-between items-center gap-2">
           <div className="flex items-center gap-1.5">
             <AttachmentsButton fileInputRef={fileInputRef} status={status} />
-             <ThinkButton selectedModelId={selectedModelId} onModelChange={onModelChange!} />
+            <ThinkButton
+               selectedModelId={selectedModelId}
+               onModelChange={onModelChange!}
+               onThinkModeToggle={(isThinking) => {
+                 if (isThinking) {
+                   sessionStorage.setItem('thinkingMode', 'true');
+                 } else {
+                   sessionStorage.removeItem('thinkingMode');
+                 }
+               }}
+             />
               <WebSearchButton
                 status={status}
                 onWebSearch={onWebSearch}
+                isActive={webSearchState.isActive}
               />
           </div>
           <div className="flex items-center px-0.5 gap-1">

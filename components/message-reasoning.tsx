@@ -14,13 +14,15 @@ export function MessageReasoning({ isLoading, reasoning }: MessageReasoningProps
   const [isExpanded, setIsExpanded] = useState(false);
 
   useEffect(() => {
-    setIsExpanded(isLoading);
-    if (!isLoading) {
-      // Auto-collapse after 2 seconds
-      const timeout = setTimeout(() => setIsExpanded(false), 2000);
+    // Keep expanded during loading and for longer after completion
+    if (isLoading) {
+      setIsExpanded(true);
+    } else if (reasoning) {
+      // Auto-collapse after 5 seconds instead of 2
+      const timeout = setTimeout(() => setIsExpanded(false), 5000);
       return () => clearTimeout(timeout);
     }
-  }, [isLoading]);
+  }, [isLoading, reasoning]);
 
   if (!reasoning) return null;
 

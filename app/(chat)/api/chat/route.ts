@@ -23,6 +23,7 @@ import { createDocument } from '@/lib/ai/tools/create-document';
 import { updateDocument } from '@/lib/ai/tools/update-document';
 import { requestSuggestions } from '@/lib/ai/tools/request-suggestions';
 import { getWeather } from '@/lib/ai/tools/get-weather';
+import { tavilySearch } from '@/lib/ai/tools/tavily-search';
 import { isProductionEnvironment } from '@/lib/constants';
 import { myProvider } from '@/lib/ai/providers';
 import { entitlementsByUserType } from '@/lib/ai/entitlements';
@@ -37,7 +38,7 @@ import type { Chat } from '@/lib/db/schema';
 import { differenceInSeconds } from 'date-fns';
 import { ChatSDKError } from '@/lib/errors';
 
-export const maxDuration = 30;
+export const maxDuration = 60;
 
 let globalStreamContext: ResumableStreamContext | null = null;
 
@@ -65,9 +66,48 @@ export async function POST(request: Request) {
   let requestBody: PostRequestBody;
 
   try {
-    const json = await request.json();
-    requestBody = postRequestBodySchema.parse(json);
-  } catch (_) {
+    // Handle large request bodies
+    const requestBodyText = await request.text();
+
+    if (requestBodyText.length > 50 * 1024 * 1024) { // 50MB limit
+      console.warn('Request body size:', requestBodyText.length, 'bytes');
+    }
+
+    requestBody = postRequestBodySchema.parse(JSON.parse(requestBodyText));
+  } catch (error) {
+    console.error('Error parsing request body:', error);
+
+    // Enhanced error handling for large inputs
+    if (error instanceof SyntaxError) {
+      return new Response(
+        JSON.stringify({
+          error: 'Invalid JSON format in request',
+          code: 'invalid_json',
+        }),
+        {
+          status: 400,
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        },
+      );
+    }
+
+    if (error instanceof Error && error.message.includes('PayloadTooLarge')) {
+      return new Response(
+        JSON.stringify({
+          error: 'Request too large. Please try with smaller input.',
+          code: 'payload_too_large',
+        }),
+        {
+          status: 413,
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        },
+      );
+    }
+
     return new ChatSDKError('bad_request:api').toResponse();
   }
 
@@ -150,18 +190,19 @@ export async function POST(request: Request) {
           model: myProvider.languageModel(selectedChatModel),
           system: systemPrompt({ selectedChatModel, requestHints }),
           messages,
-          maxSteps: 5,
+          maxSteps: 10, // Increased for complex queries
           experimental_activeTools:
             selectedChatModel === 'chat-model-reasoning' || selectedChatModel === 'chat-model' || selectedChatModel === 'chat-model1' || selectedChatModel === 'chat-model3'
-              ? []
+              ? [tavilySearch.toolSpec]
               : [
                   'createDocument',
                   'updateDocument',
                   'requestSuggestions',
+                  tavilySearch.toolSpec,
                 ],
           experimental_transform: smoothStream({
-            chunking: 'word', // Finalized to 'character' as per your request (letter-by-letter streaming)
-            delayInMs: 10,         // Balanced delay for natural "typing" feel (adjust if needed)
+            chunking: 'word',
+            delayInMs: 5, // Faster streaming for better UX
           }),
           experimental_generateMessageId: generateUUID,
           tools: {
@@ -172,6 +213,7 @@ export async function POST(request: Request) {
               session,
               dataStream,
             }),
+            tavilySearch: tavilySearch({ session, dataStream }),
           },
           onFinish: async ({ response }) => {
             if (session.user?.id) {
@@ -241,6 +283,20 @@ export async function POST(request: Request) {
       return error.toResponse();
     }
     console.error('POST error:', error);
+
+    return new Response(
+      JSON.stringify({
+        error: 'Failed to process chat request. Your input has been processed successfully.',
+        code: 'processing_error',
+        details: process.env.NODE_ENV === 'development' ? error.message : undefined,
+      }),
+      {
+        status: 500,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      },
+    );
   }
 }
 

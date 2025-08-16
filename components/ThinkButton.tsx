@@ -1,45 +1,64 @@
 import React, { useCallback, useState } from 'react';
-import { Button } from './ui/button'; // Adjusted path for components/ui/button.tsx
-import { BrainCircuit } from 'lucide-react'; // Fallback for DeepThing, install with npm install lucide-react
-import type { UIMessage } from 'ai'; // Import UIMessage for type safety
+import { Button } from './ui/button';
+import type { UIMessage } from 'ai';
 import { DeepThing } from './icons';
 
 interface ThinkButtonProps {
+  selectedModelId: string;
   onModelChange: (modelId: string) => void;
-  setMessages: (messages: UIMessage[]) => void;
+  onThinkModeToggle?: (isThinking: boolean) => void;
 }
 
-const ThinkButton: React.FC<ThinkButtonProps> = ({ onModelChange, setMessages }) => {
-  const [isThinking, setIsThinking] = useState(false);
+const ThinkButton: React.FC<ThinkButtonProps> = ({ 
+  selectedModelId, 
+  onModelChange, 
+  onThinkModeToggle 
+}) => {
+  const [isThinkingMode, setIsThinkingMode] = useState(false);
 
   const handleThinkClick = useCallback(
     (e: React.MouseEvent<HTMLButtonElement>) => {
       e.preventDefault();
       e.stopPropagation();
-      setIsThinking(true);
-      if (typeof onModelChange === 'function') {
-        onModelChange('chat-model-reasoning'); // Switch to reasoning mode
+      
+      const newThinkingMode = !isThinkingMode;
+      setIsThinkingMode(newThinkingMode);
+      
+      // Toggle between reasoning model and current selected model
+      if (newThinkingMode) {
+        // Store current model and switch to reasoning
+        sessionStorage.setItem('previousModel', selectedModelId);
+        onModelChange('chat-model-reasoning');
+      } else {
+        // Restore previous model or default
+        const previousModel = sessionStorage.getItem('previousModel') || 'chat-model';
+        onModelChange(previousModel);
+        sessionStorage.removeItem('previousModel');
       }
-      if (typeof setMessages === 'function') {
-        setMessages((prev: UIMessage[]) => [...prev]); // Trigger re-render
+      
+      // Notify parent component about thinking mode change
+      if (onThinkModeToggle) {
+        onThinkModeToggle(newThinkingMode);
       }
-      setTimeout(() => setIsThinking(false), 200); // Reset after click effect
     },
-    [onModelChange, setMessages]
+    [isThinkingMode, selectedModelId, onModelChange, onThinkModeToggle]
   );
 
   return (
     <Button
       data-testid="think-button"
-      className="rounded-full h-fit border transition-all bg-transparent duration-200 flex items-center gap-1"
+      className={`rounded-full h-fit border transition-all duration-200 flex items-center gap-1 ${
+        isThinkingMode 
+          ? 'bg-purple-100 border-purple-300 text-purple-700 dark:bg-purple-900/30 dark:border-purple-600 dark:text-purple-300' 
+          : 'bg-transparent hover:bg-accent/20'
+      }`}
       onClick={handleThinkClick}
-      disabled={isThinking}
-      aria-label="Activate Think Mode"
+      aria-label="Toggle Think Mode"
       variant="outline"
       size="default"
     >
       <DeepThing />
-      <span>DeepThink</span>
+      <span>{isThinkingMode ? 'DeepThink ON' : 'DeepThink'}</span>
     </Button>
   );
 };

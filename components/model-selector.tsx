@@ -56,12 +56,15 @@ export function ModelSelector({
   // ✅ Show all models without entitlement restriction
   const availableChatModels = chatModels
 
-  const selectedChatModel = useMemo(
-    () =>
-      availableChatModels.find((chatModel) => chatModel.id === optimisticModelId) ||
-      null,
-    [optimisticModelId, availableChatModels]
-  )
+  const selectedChatModel = useMemo(() => {
+    // If in thinking mode, show the original selected model in UI
+    const isThinkingMode = sessionStorage.getItem('thinkingMode') === 'true';
+    const displayModelId = isThinkingMode 
+      ? (sessionStorage.getItem('previousModel') || optimisticModelId)
+      : optimisticModelId;
+    
+    return availableChatModels.find((chatModel) => chatModel.id === displayModelId) || null;
+  }, [optimisticModelId, availableChatModels])
 
   const handleModelSelect = (modelId: string) => {
     setOpen(false)

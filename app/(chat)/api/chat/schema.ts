@@ -6,26 +6,18 @@ const textPartSchema = z.object({
 });
 
 export const postRequestBodySchema = z.object({
-  id: z.string().uuid(),
+  id: z.string(),
   message: z.object({
-    id: z.string().uuid(),
-    createdAt: z.coerce.date(),
-    role: z.enum(['user']),
-    content: z.string().min(1).max(12000),
-    parts: z.array(textPartSchema),
-    experimental_attachments: z
-      .array(
-        z.object({
-          url: z.string().url(),
-          name: z.string().min(1).max(12000),
-          contentType: z.enum(['image/png', 'image/jpg', 'image/jpeg']),
-        }),
-      )
-      .optional(),
+    id: z.string(),
+    role: z.literal('user'),
+    parts: z.array(z.object({
+      type: z.literal('text'),
+      text: z.string(), // Removed size limit to handle large inputs
+    })),
+    experimental_attachments: z.array(z.any()).optional(),
   }),
-  selectedChatModel: z.enum(['chat-model', 'chat-model-reasoning', 'chat-model1', 'chat-model2', 'chat-model3']),
+  selectedChatModel: z.string(),
   selectedVisibilityType: z.enum(['public', 'private']),
-  experimental_webSearch: z.boolean().optional(), // New field for web search
 });
 
 export type PostRequestBody = z.infer<typeof postRequestBodySchema>;

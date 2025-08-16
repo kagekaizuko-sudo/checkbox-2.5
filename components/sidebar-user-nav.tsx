@@ -1,12 +1,12 @@
 'use client';
 
-import { 
-  ChevronRight, 
-  Settings, 
-  Moon, 
-  Sun, 
-  User, 
-  LogOut, 
+import {
+  ChevronRight,
+  Settings,
+  Moon,
+  Sun,
+  User,
+  LogOut,
   LogIn,
   Palette,
   Bell,
@@ -42,228 +42,199 @@ import { toast } from './toast';
 import { LoaderIcon } from './icons';
 import { guestRegex } from '@/lib/constants';
 
-interface SmartUserNavProps {
-  user: NextAuthUser;
-}
-
-export function SmartSidebarUserNav({ user }: SmartUserNavProps) {
-  const router = useRouter();
-  const { data, status } = useSession();
+export function SmartSidebarUserNav({ user }: { user: NextAuthUser }) {
   const { setTheme, theme } = useTheme();
-  const [isOpen, setIsOpen] = useState(false);
+  const router = useRouter();
+  const [isSigningOut, setIsSigningOut] = useState(false);
+  const isGuest = user.email && guestRegex.test(user.email);
 
-  const isGuest = guestRegex.test(data?.user?.email ?? '');
-
-  const handleThemeChange = (newTheme: string) => {
-    setTheme(newTheme);
-    toast({
-      type: 'success',
-      description: `Theme changed to ${newTheme} mode`,
-    });
+  const handleSignOut = async () => {
+    setIsSigningOut(true);
+    try {
+      await signOut({ redirect: false });
+      router.push('/login');
+      router.refresh();
+    } catch (error) {
+      console.error('Sign out error:', error);
+    } finally {
+      setIsSigningOut(false);
+    }
   };
 
-  const handleSignOut = () => {
-    signOut({
-      redirectTo: '/',
-    });
-    toast({
-      type: 'success',
-      description: 'Signed out successfully',
-    });
+  const handleLogin = () => {
+    router.push('/login');
   };
 
-  const handleProfileClick = () => {
-    router.push('/profile');
+  const handleSignup = () => {
+    router.push('/register');
   };
 
-  // Safe email getter with fallback
-  const getUserEmail = () => {
-    return user?.email ?? data?.user?.email ?? 'user@example.com';
-  };
-
-  const getUserName = () => {
-    return user?.name ?? data?.user?.name ?? 'User';
+  const getAvatarUrl = (email: string) => {
+    // Use a more reliable avatar service or fallback
+    return `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(email)}`;
   };
 
   return (
     <SidebarMenu>
       <SidebarMenuItem>
-        <DropdownMenu open={isOpen} onOpenChange={setIsOpen}>
+        <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            {status === 'loading' ? (
-              <SidebarMenuButton className="h-10 w-10 rounded-full p-0">
-                <div className="size-8 bg-zinc-500/30 rounded-full animate-pulse" />
-              </SidebarMenuButton>
-            ) : (
-              <SidebarMenuButton
-                data-testid="smart-user-nav-button"
-                className="h-10 w-10 rounded-full p-0 hover:scale-105 transition-transform duration-200"
-                // Fix: Properly handle title prop
-                {...(isGuest ? {} : { title: getUserEmail() })}
-              >
+            <SidebarMenuButton
+              size="lg"
+              className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
+            >
+              <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
                 <Image
-                  src={`https://avatar.vercel.sh/${getUserEmail()}`}
-                  alt={getUserEmail()}
+                  src={getAvatarUrl(user.email || 'user')}
+                  alt={user.name || 'User'}
                   width={32}
                   height={32}
-                  className="rounded-full border-2 border-primary/20 hover:border-primary/40 transition-colors"
+                  className="rounded-lg"
+                  unoptimized
                 />
-              </SidebarMenuButton>
-            )}
-          </DropdownMenuTrigger>
-          
-          <DropdownMenuContent
-            data-testid="smart-user-nav-menu"
-            side="top"
-            className="w-64 p-2"
-            align="start"
-          >
-            {/* User Info Header */}
-            <div className="flex items-center gap-3 p-2 mb-2 bg-muted/50 rounded-full">
-              <Image
-                src={`https://avatar.vercel.sh/${getUserEmail()}`}
-                alt="User Avatar"
-                width={40}
-                height={40}
-                className="rounded-full"
-              />
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium truncate">
-                  {isGuest ? 'Guest User' : getUserName()}
-                </p>
-                <p className="text-xs text-muted-foreground truncate">
-                  {isGuest ? 'Not signed in' : getUserEmail()}
-                </p>
               </div>
-            </div>
+              <div className="grid flex-1 text-left text-sm leading-tight">
+                <span className="truncate font-semibold">
+                  {user.name || 'User'}
+                </span>
+                <span className="truncate text-xs">
+                  {user.email}
+                </span>
+              </div>
+              <ChevronRight className="ml-auto size-4" />
+            </SidebarMenuButton>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent
+            className="w-[--radix-dropdown-menu-trigger-width] min-w-56 rounded-lg"
+            side="bottom"
+            align="end"
+            sideOffset={4}
+          >
+            <DropdownMenuLabel className="p-0 font-normal">
+              <div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
+                <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
+                  <Image
+                    src={getAvatarUrl(user.email || 'user')}
+                    alt={user.name || 'User'}
+                    width={32}
+                    height={32}
+                    className="rounded-lg"
+                    unoptimized
+                  />
+                </div>
+                <div className="grid flex-1 text-left text-sm leading-tight">
+                  <span className="truncate font-semibold">
+                    {user.name || 'User'}
+                  </span>
+                  <span className="truncate text-xs">
+                    {user.email}
+                  </span>
+                </div>
+              </div>
+            </DropdownMenuLabel>
+            <DropdownMenuSeparator />
+
+            {/* Profile Section */}
+            <DropdownMenuItem onClick={() => router.push('/profile')}>
+              <User className="mr-2 h-4 w-4" />
+              Profile
+            </DropdownMenuItem>
+
+            <DropdownMenuItem onClick={() => router.push('/settings')}>
+              <Settings className="mr-2 h-4 w-4" />
+              Settings
+            </DropdownMenuItem>
+
+            {/* Theme Selector */}
+            <DropdownMenuSub>
+              <DropdownMenuSubTrigger>
+                <Palette className="mr-2 h-4 w-4" />
+                Theme
+              </DropdownMenuSubTrigger>
+              <DropdownMenuSubContent>
+                <DropdownMenuItem onClick={() => setTheme('light')}>
+                  <Sun className="mr-2 h-4 w-4" />
+                  Light
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setTheme('dark')}>
+                  <Moon className="mr-2 h-4 w-4" />
+                  Dark
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setTheme('system')}>
+                  <Settings className="mr-2 h-4 w-4" />
+                  System
+                </DropdownMenuItem>
+              </DropdownMenuSubContent>
+            </DropdownMenuSub>
 
             <DropdownMenuSeparator />
 
-            {/* Account Section */}
+            {/* Help & Support */}
+            <DropdownMenuItem onClick={() => router.push('/help')}>
+              <HelpCircle className="mr-2 h-4 w-4" />
+              Help & Support
+            </DropdownMenuItem>
+
+            <DropdownMenuItem onClick={() => router.push('/notifications')}>
+              <Bell className="mr-2 h-4 w-4" />
+              Notifications
+            </DropdownMenuItem>
+
             {!isGuest && (
               <>
-                <DropdownMenuLabel className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                  Account
-                </DropdownMenuLabel>
-                <DropdownMenuItem 
-                  className="cursor-pointer gap-2"
-                  onClick={handleProfileClick}
-                >
-                  <User className="h-4 w-4" />
-                  Profile Settings
-                </DropdownMenuItem>
-                <DropdownMenuItem className="cursor-pointer gap-2">
-                  <Bell className="h-4 w-4" />
-                  Notifications
-                </DropdownMenuItem>
-                <DropdownMenuItem className="cursor-pointer gap-2">
-                  <Shield className="h-4 w-4" />
-                  Privacy & Security
-                </DropdownMenuItem>
                 <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => router.push('/privacy')}>
+                  <Shield className="mr-2 h-4 w-4" />
+                  Privacy
+                </DropdownMenuItem>
+
+                <DropdownMenuItem onClick={() => router.push('/export')}>
+                  <Download className="mr-2 h-4 w-4" />
+                  Export Data
+                </DropdownMenuItem>
               </>
             )}
 
-            {/* Appearance Section */}
-            <DropdownMenuLabel className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-              Appearance
-            </DropdownMenuLabel>
-            <DropdownMenuSub>
-              <DropdownMenuSubTrigger className="cursor-pointer gap-2">
-                <Palette className="h-4 w-4" />
-                Theme
-              </DropdownMenuSubTrigger>
-              <DropdownMenuSubContent className="w-48">
-                <DropdownMenuItem 
-                  className="cursor-pointer gap-2"
-                  onClick={() => handleThemeChange('light')}
-                >
-                  <Sun className="h-4 w-4" />
-                  Light Mode
-                  {theme === 'light' && <div className="ml-auto h-2 w-2 bg-primary rounded-full" />}
-                </DropdownMenuItem>
-                <DropdownMenuItem 
-                  className="cursor-pointer gap-2"
-                  onClick={() => handleThemeChange('dark')}
-                >
-                  <Moon className="h-4 w-4" />
-                  Dark Mode
-                  {theme === 'dark' && <div className="ml-auto h-2 w-2 bg-primary rounded-full" />}
-                </DropdownMenuItem>
-                <DropdownMenuItem 
-                  className="cursor-pointer gap-2"
-                  onClick={() => handleThemeChange('system')}
-                >
-                  <Settings className="h-4 w-4" />
-                  System Default
-                  {theme === 'system' && <div className="ml-auto h-2 w-2 bg-primary rounded-full" />}
-                </DropdownMenuItem>
-              </DropdownMenuSubContent>
-            </DropdownMenuSub>
-
-            {/* More Options */}
-            <DropdownMenuSub>
-              <DropdownMenuSubTrigger className="cursor-pointer gap-2">
-                <Settings className="h-4 w-4" />
-                More Options
-              </DropdownMenuSubTrigger>
-              <DropdownMenuSubContent className="w-48">
-                <DropdownMenuItem className="cursor-pointer gap-2">
-                  <Download className="h-4 w-4" />
-                  Export Data
-                </DropdownMenuItem>
-                <DropdownMenuItem className="cursor-pointer gap-2">
-                  <HelpCircle className="h-4 w-4" />
-                  Help & Support
-                </DropdownMenuItem>
-                {!isGuest && (
-                  <DropdownMenuItem className="cursor-pointer gap-2 text-destructive">
-                    <Trash2 className="h-4 w-4" />
-                    Delete Account
-                  </DropdownMenuItem>
-                )}
-              </DropdownMenuSubContent>
-            </DropdownMenuSub>
-
             <DropdownMenuSeparator />
 
-            {/* Authentication */}
-            <DropdownMenuItem asChild data-testid="smart-user-nav-auth">
-              <button
-                type="button"
-                className="w-full cursor-pointer gap-2 text-left flex items-center"
-                onClick={() => {
-                  if (status === 'loading') {
-                    toast({
-                      type: 'error',
-                      description: 'Please wait, checking authentication status...',
-                    });
-                    return;
-                  }
-
-                  if (isGuest) {
-                    router.push('/login');
-                  } else {
-                    handleSignOut();
-                  }
-                }}
+            {/* Authentication Actions */}
+            {isGuest ? (
+              <>
+                <DropdownMenuItem
+                  onClick={handleLogin}
+                  className="text-blue-600 focus:text-blue-600 focus:bg-blue-50 dark:focus:bg-blue-950"
+                >
+                  <LogIn className="mr-2 h-4 w-4" />
+                  Login
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={handleSignup}
+                  className="text-green-600 focus:text-green-600 focus:bg-green-50 dark:focus:bg-green-950"
+                >
+                  <User className="mr-2 h-4 w-4" />
+                  Sign Up
+                </DropdownMenuItem>
+              </>
+            ) : (
+              <DropdownMenuItem
+                onClick={handleSignOut}
+                disabled={isSigningOut}
+                className="text-red-600 focus:text-red-600 focus:bg-red-50 dark:focus:bg-red-950"
               >
-                {isGuest ? (
-                  <>
-                    <LogIn className="h-4 w-4" />
-                    Sign In to Account
-                  </>
+                {isSigningOut ? (
+                  <LoaderIcon />
                 ) : (
-                  <>
-                    <LogOut className="h-4 w-4" />
-                    Sign Out
-                  </>
+                  <LogOut className="mr-2 h-4 w-4" />
                 )}
-              </button>
-            </DropdownMenuItem>
+                {isSigningOut ? 'Signing out...' : 'Sign out'}
+              </DropdownMenuItem>
+            )}
           </DropdownMenuContent>
         </DropdownMenu>
       </SidebarMenuItem>
     </SidebarMenu>
   );
 }
+
+// Export the component with the expected name for backward compatibility
+export { SmartSidebarUserNav as SidebarUserNav };

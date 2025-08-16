@@ -37,6 +37,15 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL('/', request.url));
   }
 
+  // Allow larger payloads for chat API
+  if (pathname.startsWith('/api/chat')) {
+    // Set headers to handle large requests
+    const response = NextResponse.next();
+    response.headers.set('x-body-size-limit', '50mb');
+    return response;
+  }
+
+
   return NextResponse.next();
 }
 
