@@ -26,38 +26,13 @@ import { AnimatePresence, motion } from "framer-motion";
 import { ArrowDownIcon } from "lucide-react";
 import { useScrollToBottom } from "@/hooks/use-scroll-to-bottom";
 import type { VisibilityType } from "./visibility-selector";
-import { WebSearchButton } from './web-search-button';
-import { useWebSearchState } from '@/hooks/use-web-search-state';
-import { WebSearchDisplay } from './web-search-display';
 import type { Session } from "next-auth";
 import { cn } from "@/lib/utils";
+import { WebSearchButton } from "./web-search-button";
+import { ImprovePromptButton } from "./improve-prompt-button";
 
 // Utility function for UUID
 const generateUUID = () => crypto.randomUUID();
-
-// Shuffle function for randomizing placeholders
-const shuffleArray = (array: string[]) => {
-  return array.sort(() => Math.random() - 0.8);
-};
-
-// Dynamic placeholder array
-const placeholders = shuffleArray([
-  "What can I help you solve today?",
-  "Search the web for the latest news or trends",
-  "Draft an essay, article, or research summary",
-  "Analyze data or explain technical concepts clearly",
-  "Get real-time answers to current events and news",
-  "Write, debug, and optimize your code",
-  "Summarize long reports, papers, or transcripts",
-  "Generate creative content, from stories to scripts",
-  "Compare different viewpoints on a single question",
-  "Plan strategies, workflows, or study guides",
-  "Ask about science, history, or emerging tech",
-  "Break down advanced math or logic problems",
-  "Explore step‑by‑step reasoning for tough questions",
-  "Translate and explain text in multiple languages",
-  "Simulate debates, interviews, or brainstorming sessions",
-]);
 
 function PureMultimodalInput({
   chatId,
@@ -94,12 +69,10 @@ function PureMultimodalInput({
   session: Session | null;
   selectedModelId: string;
   onModelChange?: (modelId: string) => void;
-  onWebSearch?: () => void;
+  onWebSearch?: (results: any[]) => void;
 }) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const { width } = useWindowSize();
-  const [currentPlaceholderIndex, setCurrentPlaceholderIndex] = useState(0);
-  const [displayedPlaceholder, setDisplayedPlaceholder] = useState("");
 
   // Fallback for undefined messages
   const safeMessages = messages || [];
@@ -115,8 +88,6 @@ function PureMultimodalInput({
       if (textareaRef.current) {
         textareaRef.current.value = "";
       }
-      setCurrentPlaceholderIndex(0);
-      setDisplayedPlaceholder("");
     }
   }, [chatId, safeMessages.length, setInput]);
 
@@ -140,25 +111,6 @@ function PureMultimodalInput({
       textareaRef.current.style.height = "104px";
     }
   };
-
-  // Placeholder cycling with bottom-to-top slide effect (only for centered/empty chat)
-  useEffect(() => {
-    if (status !== "ready" || input || safeMessages.length > 0) {
-      setDisplayedPlaceholder(safeMessages.length === 0 ? "" : "Ask Anything");
-      return;
-    }
-
-    const cycleInterval = setInterval(() => {
-      setCurrentPlaceholderIndex((prev) => (prev + 1) % placeholders.length);
-    }, 4000);
-
-    return () => clearInterval(cycleInterval);
-  }, [status, input, safeMessages.length, currentPlaceholderIndex]);
-
-  // Sync displayedPlaceholder with current index
-  useEffect(() => {
-    setDisplayedPlaceholder(placeholders[currentPlaceholderIndex]);
-  }, [currentPlaceholderIndex]);
 
   // Sync localStorage with input
   const [localStorageInput, setLocalStorageInput] = useLocalStorage("input", "");
@@ -184,76 +136,20 @@ function PureMultimodalInput({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploadQueue, setUploadQueue] = useState<Array<string>>([]);
 
-  const webSearchState = useWebSearchState();
+  const submitForm = useCallback(() => {
+    window.history.replaceState({}, "", `/chat/${chatId}`);
 
-  // 🔥 OLD PATTERN: Simple submitForm with URL history management
-  const submitForm = useCallback(
-    async (event?: React.FormEvent<HTMLFormElement>) => {
-      event?.preventDefault();
+    handleSubmit(undefined, {
+      experimental_attachments: attachments,
+    });
+    setAttachments([]);
+    setLocalStorageInput("");
+    resetHeight();
+    if (width && width > 768) {
+      textareaRef.current?.focus();
+    }
+  }, [attachments, handleSubmit, setAttachments, setLocalStorageInput, width, chatId]);
 
-      if (!input.trim() && attachments.length === 0) return;
-
-      // Handle web search mode
-      if (webSearchState.isActive && input.trim()) {
-        webSearchState.startSearch(input.trim());
-
-        try {
-          const response = await fetch('/api/web-search', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              query: input.trim(),
-            }),
-          });
-
-          const data = await response.json();
-
-          if (response.ok && data.results) {
-            webSearchState.setResults(data.results, data.answer);
-
-            // Create a comprehensive search result message
-            const searchSummary = `Here are the web search results for "${input.trim()}":\n\n${data.answer ? `**Quick Answer:** ${data.answer}\n\n` : ''}**Sources:**\n${data.results.map((result: any, index: number) =>
-              `${index + 1}. **${result.title}**\n   ${result.content}\n   Source: [${new URL(result.url).hostname}](${result.url})\n`
-            ).join('\n')}`;
-
-            // Add the search results as a message
-            const searchMessage = {
-              id: generateUUID(),
-              role: 'assistant' as const,
-              content: searchSummary,
-            };
-
-            setMessages(prev => [...prev, {
-              id: generateUUID(),
-              role: 'user',
-              content: `Search: ${input.trim()}`,
-            }, searchMessage]);
-          } else {
-            webSearchState.setError(data.error || 'Search failed');
-          }
-        } catch (error) {
-          webSearchState.setError('Network error occurred');
-        }
-
-        setInput('');
-        return;
-      }
-
-      handleSubmit(event, {
-        experimental_attachments: attachments,
-      });
-
-      setAttachments([]);
-      setInput('');
-
-      if (width && width > 768) {
-        textareaRef.current?.focus();
-      }
-    },
-    [input, attachments, handleSubmit, setAttachments, setInput, width, webSearchState, setMessages],
-  );
 
 
   const uploadFile = async (file: File) => {
@@ -314,7 +210,7 @@ function PureMultimodalInput({
     <>
       {/* Centered Layout for Empty Chat */}
       {isEmptyChat && (
-        <div className="flex flex-col items-center min-h-[44vh] w-full">
+        <div className="flex flex-col items-center min-h-[40vh] w-full">
           <div className="w-full max-w-3xl">
             {/* Chat Title */}
             <motion.div
@@ -332,7 +228,7 @@ function PureMultimodalInput({
                   justifyContent: "center",
                 }}
               >
-                Ask Anything Checkbox AI
+                What can I help you today?
               </h1>
             </motion.div>
 
@@ -346,8 +242,8 @@ function PureMultimodalInput({
               <CenteredInputForm
                 textareaRef={textareaRef}
                 input={input}
+                setInput={setInput}
                 handleInput={handleInput}
-                displayedPlaceholder={displayedPlaceholder}
                 safeMessages={safeMessages}
                 className={className}
                 submitForm={submitForm}
@@ -360,7 +256,7 @@ function PureMultimodalInput({
                 setMessages={setMessages}
                 session={session}
                 selectedModelId={selectedModelId}
-                onModelChange={onModelChange} // 🔥 Simple pass-through
+                onModelChange={onModelChange}
                 onWebSearch={onWebSearch}
               />
             </motion.div>
@@ -388,7 +284,7 @@ function PureMultimodalInput({
                 >
                   <Button
                     data-testid="scroll-to-bottom-button"
-                    className="rounded-full border bg-muted"
+                    className="rounded-full border bg-muted h-8 w-8"
                     size="icon"
                     variant="outline"
                     onClick={(event) => {
@@ -396,7 +292,7 @@ function PureMultimodalInput({
                       scrollToBottom();
                     }}
                   >
-                    <ArrowDownIcon size={14} />
+                    <ArrowDownIcon size={16} />
                   </Button>
                 </motion.div>
               )}
@@ -430,8 +326,8 @@ function PureMultimodalInput({
           <BottomInputForm
             textareaRef={textareaRef}
             input={input}
+            setInput={setInput}
             handleInput={handleInput}
-            displayedPlaceholder={displayedPlaceholder}
             safeMessages={safeMessages}
             className={className}
             submitForm={submitForm}
@@ -443,7 +339,7 @@ function PureMultimodalInput({
             setMessages={setMessages}
             session={session}
             selectedModelId={selectedModelId}
-            onModelChange={onModelChange} // 🔥 Simple pass-through
+            onModelChange={onModelChange}
             onWebSearch={onWebSearch}
           />
         </motion.div>
@@ -452,12 +348,12 @@ function PureMultimodalInput({
   );
 }
 
-// Centered Input Form Component (for empty chats - keeps cycling)
+// Centered Input Form Component (without animated placeholder)
 function CenteredInputForm({
   textareaRef,
   input,
+  setInput,
   handleInput,
-  displayedPlaceholder,
   safeMessages,
   className,
   submitForm,
@@ -502,7 +398,7 @@ function CenteredInputForm({
 
       <div
         className={cn(
-          "flex w-full flex-col rounded-[1.6rem] bg-muted overflow-hidden cursor-text gap-2.5",
+          "flex w-full flex-col rounded-[1.5rem] bg-muted overflow-hidden cursor-text gap-2.5 border shadow-",
           className
         )}
         onClick={handleInputFocus}
@@ -523,7 +419,7 @@ function CenteredInputForm({
           </div>
         )}
 
-        <div className="flex w-full flex-col p-2">
+        <div className="flex w-full flex-col">
           <div className="relative text-base">
             <Textarea
               data-testid="multimodal-input"
@@ -531,60 +427,52 @@ function CenteredInputForm({
               value={input}
               onChange={handleInput}
               className={cx(
-                "w-full flex overflow-y-auto resize-none rounded-t-2xl pr-8 cursor-text focus:ring-0 focus:border-0 scrollbar-thin scrollbar-thumb-foreground scrollbar-track-transparent",
+                "w-full h-full flex overflow-y-auto resize-none cursor-text focus:ring-0 focus:border-0 scrollbar-thin scrollbar-thumb-foreground scrollbar-track-transparent",
                 className,
               )}
               rows={1}
               autoFocus
-              placeholder=""
+              placeholder="Message Checkbox"
               onKeyDown={handleKeyDown}
-              style={{ paddingLeft: '10px', backgroundColor: 'transparent !important' }}
+              style={{ paddingLeft: '16px', backgroundColor: 'transparent !important' }}
             />
-            {!input && safeMessages.length === 0 && (
-              <AnimatePresence>
-                <motion.div
-                  key={displayedPlaceholder}
-                  initial={{ opacity: 0, y: 30 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -40, transition: { duration: 0.3 } }}
-                  transition={{ type: "spring", stiffness: 200, damping: 25, duration: 0.7 }}
-                  className="absolute top-0 left-[3px] pointer-events-none text-muted-foreground placeholder-visible p-2"
-                  style={{
-                    fontStyle: "inherit",
-                    fontWeight: 300,
-                    fontSize: "clamp(16px, 2.5vw, 16px)",
-                    letterSpacing: "0.2px",
-                  }}
-                >
-                  {displayedPlaceholder}
-                </motion.div>
-              </AnimatePresence>
-            )}
           </div>
         </div>
 
-        <div className="flex justify-between items-center rounded-b-2xl pl-2 pr-2 pb-2">
+        <div className="flex justify-between items-center rounded-b-[1.5rem] p-2.5">
           <div className="flex items-center gap-1.5">
-            <AttachmentsButton fileInputRef={fileInputRef} status={status} />
             <ThinkButton
                selectedModelId={selectedModelId}
                onModelChange={onModelChange!}
                onThinkModeToggle={(isThinking) => {
-                 // Store thinking mode state without affecting UI model selector
-                 if (isThinking) {
-                   sessionStorage.setItem('thinkingMode', 'true');
-                 } else {
-                   sessionStorage.removeItem('thinkingMode');
+                 if (typeof window !== 'undefined') {
+                   if (isThinking) {
+                     sessionStorage.setItem('thinkingMode', 'true');
+                   } else {
+                     sessionStorage.removeItem('thinkingMode');
+                   }
                  }
                }}
              />
-              <WebSearchButton
-                status={status}
-                onWebSearch={onWebSearch}
-                isActive={webSearchState.isActive}
-              />
+             <WebSearchButton
+               onClick={() => onWebSearch?.([])}
+               status={status}
+             />
+            <ImprovePromptButton
+              input={input}
+              status={status}
+              onImprovedPrompt={(improved) => {
+                setInput?.(improved);
+                if (textareaRef?.current) {
+                  textareaRef.current.value = improved;
+                  textareaRef.current.focus();
+                }
+              }}
+            />
           </div>
+
           <div className="flex items-center gap-1">
+            <AttachmentsButton fileInputRef={fileInputRef} status={status} />
             {status === "submitted" ? (
               <StopButton stop={stop} setMessages={setMessages} />
             ) : (
@@ -598,12 +486,12 @@ function CenteredInputForm({
   );
 }
 
-// Bottom Input Form Component (for active chats - static "Ask Anything" placeholder)
+// Bottom Input Form Component (for active chats)
 function BottomInputForm({
   textareaRef,
   input,
+  setInput,
   handleInput,
-  displayedPlaceholder,
   safeMessages,
   className,
   submitForm,
@@ -629,29 +517,19 @@ function BottomInputForm({
     }
   }, [status, input, submitForm]);
 
-  const webSearchState = useWebSearchState();
-
   return (
     <div
       className={cn(
-        "flex w-full flex-col grow rounded-[1.6rem] bg-muted overflow-x-auto cursor-text gap-2.5",
+        "flex w-full flex-col grow rounded-[1.5rem] bg-muted border overflow-x-auto cursor-text gap-2.5",
         className
       )}
     >
-      <WebSearchDisplay
-        isSearching={webSearchState.isSearching}
-        results={webSearchState.results}
-        answer={webSearchState.answer}
-        query={webSearchState.query}
-        error={webSearchState.error}
-      />
-
       {(attachments?.length > 0 || uploadQueue.length > 0) && (
-        <div className="p-2 flex flex-row gap-2 overflow-x-auto items-end border-b-[2.5px] border-[rgba(6, 182, 212, 0.2)] dark:border-[rgba(0, 255, 255, 0.2)]">
-          {attachments?.map((attachment) => (
+        <div className="p-2 flex flex-row gap-2 overflow-x-auto items-end">
+          {attachments?.map((attachment: any) => (
             <PreviewAttachment key={attachment.url} attachment={attachment} />
           ))}
-          {uploadQueue.map((filename) => (
+          {uploadQueue.map((filename: string) => (
             <PreviewAttachment
               key={filename}
               attachment={{ url: "", name: filename, contentType: "" }}
@@ -661,7 +539,7 @@ function BottomInputForm({
         </div>
       )}
 
-      <div className="flex w-full flex-col p-2">
+      <div className="flex w-full flex-col">
         <div className="relative">
           <Textarea
             data-testid="multimodal-input"
@@ -669,40 +547,52 @@ function BottomInputForm({
             value={input}
             onChange={handleInput}
             className={cx(
-              "w-full flex overflow-x-auto overflow-y-auto resize-none rounded-t-[1.6rem] bg-transparent cursor-text focus:ring-0 focus:border-0 scrollbar-thin scrollbar-thumb-foreground scrollbar-track-muted",
+              "w-full flex overflow-x-auto overflow-y-auto resize-none rounded-t-[1.5rem] bg-transparent cursor-text focus:ring-0 focus:border-0 scrollbar-thin scrollbar-thumb-foreground scrollbar-track-muted",
               className,
             )}
             rows={1}
             autoFocus
-            placeholder={webSearchState.isActive ? "Enter your search query..." : "Ask Anything"}
+            placeholder="Ask Anything"
             onKeyDown={handleKeyDown}
-            style={{ paddingLeft: '10px', backgroundColor: 'transparent !important' }}
+            style={{ paddingLeft: '16px', backgroundColor: 'transparent !important' }}
           />
         </div>
       </div>
 
-      <div className="flex justify-between w-full pt-12 cursor-auto gap-1">
-        <div className="absolute bottom-0 p-2 w-full rounded-b-[1.6rem] flex justify-between items-center gap-2">
+      <div className="flex justify-between w-full pt-14 cursor-auto gap-1">
+        <div className="absolute bottom-0 p-2 w-full rounded-b-[1.5rem] flex justify-between items-center gap-2">
           <div className="flex items-center gap-1.5">
-            <AttachmentsButton fileInputRef={fileInputRef} status={status} />
             <ThinkButton
                selectedModelId={selectedModelId}
                onModelChange={onModelChange!}
                onThinkModeToggle={(isThinking) => {
-                 if (isThinking) {
-                   sessionStorage.setItem('thinkingMode', 'true');
-                 } else {
-                   sessionStorage.removeItem('thinkingMode');
+                 if (typeof window !== 'undefined') {
+                   if (isThinking) {
+                     sessionStorage.setItem('thinkingMode', 'true');
+                   } else {
+                     sessionStorage.removeItem('thinkingMode');
+                   }
                  }
                }}
              />
-              <WebSearchButton
-                status={status}
-                onWebSearch={onWebSearch}
-                isActive={webSearchState.isActive}
-              />
+             <WebSearchButton
+               onClick={() => onWebSearch?.([])}
+               status={status}
+             />
+            <ImprovePromptButton
+              input={input}
+              status={status}
+              onImprovedPrompt={(improved) => {
+                setInput?.(improved);
+                if (textareaRef?.current) {
+                  textareaRef.current.value = improved;
+                  textareaRef.current.focus();
+                }
+              }}
+            />
           </div>
           <div className="flex items-center px-0.5 gap-1">
+            <AttachmentsButton fileInputRef={fileInputRef} status={status} />
             {status === "submitted" ? (
               <StopButton stop={stop} setMessages={setMessages} />
             ) : (
@@ -716,33 +606,10 @@ function BottomInputForm({
   );
 }
 
-// 🔥 OLD PATTERN: Shared Input Styles Component
+// Original Input Styles Component (without animated placeholder styles)
 function InputStyles() {
   return (
     <style jsx>{`
-      .placeholder-visible {
-        opacity: 1;
-        transition: opacity 0.4s ease-in-out, transform 0.4s ease-in-out;
-        color: transparent;
-        background: linear-gradient(90deg, #3b82f6, #a855f7, #ec4899);
-        background-size: 200% 200%;
-        -webkit-background-clip: text;
-        background-clip: text;
-        animation: gradientShift 6s ease infinite;
-      }
-
-      @keyframes gradientShift {
-        0% {
-          background-position: 0% 50%;
-        }
-        50% {
-          background-position: 100% 50%;
-        }
-        100% {
-          background-position: 0% 50%;
-        }
-      }
-
       [data-testid="multimodal-input"] {
         white-space: pre-wrap;
         overflow-x: auto;
@@ -791,10 +658,6 @@ function InputStyles() {
       }
 
       @media (prefers-color-scheme: dark) {
-        .placeholder-visible {
-          background: linear-gradient(90deg, #60a5fa, #c084fc, #f472b6);
-        }
-
         [data-testid="multimodal-input"]::placeholder {
           text-shadow: 0 0 8px rgba(96, 165, 250, 0.4);
           color: #999;
@@ -878,7 +741,7 @@ function PureStopButton({
   return (
     <Button
       data-testid="stop-button"
-      className="rounded-full p-1.5 h-fit border dark:border-zinc-600"
+      className="rounded-full p-2 h-fit border dark:border-zinc-600"
       onClick={onClick}
       aria-label="Stop generation"
     >
@@ -909,7 +772,7 @@ function PureSendButton({
   return (
     <Button
       data-testid="send-button"
-      className="rounded-full p-1.5 h-fit border dark:border-zinc-600 disabled:opacity-50"
+      className="rounded-full p-2 h-fit dark:border-zinc-600 disabled:opacity-50"
       onClick={onClick}
       disabled={isDisabled}
       aria-label="Send message"
