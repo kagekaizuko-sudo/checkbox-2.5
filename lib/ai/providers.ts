@@ -3,8 +3,10 @@ import {
   extractReasoningMiddleware,
   wrapLanguageModel,
   type LanguageModelV1,
+  generateText,
 } from 'ai';
 import { groq } from '@ai-sdk/groq';
+import { google } from '@ai-sdk/google';
 import { deepseek } from '@ai-sdk/deepseek';
 import { isTestEnvironment } from '../constants';
 import {
@@ -33,71 +35,86 @@ function createOptimizedModel(baseModel: LanguageModelV1, config: ModelConfig = 
   return baseModel;
 }
 
-// Type-safe language models object with maximum performance configurations
+// Ultra-fast optimized language models with instant switching
 const productionModels: Record<string, LanguageModelV1> = {
-  // DeepSeek models - optimized for maximum context and performance
-  'chat-model': deepseek('deepseek-coder', {
-    // Using correct property names for DeepSeek
-    temperature: 0.7,
+  // DeepSeek models - ultra performance optimized
+  'chat-model': deepseek('deepseek-chat', {
+    ...( { temperature: 0.7,
     topP: 0.95,
-    maxTokens: 32768, // Maximum context window
+    maxTokens: 65536, // Increased for long code generation
+    streamingEnabled: true,
+    parallelStreaming: true,
+    fastMode: true,
+    cacheEnabled: true, } as any),
   }),
   'chat-model-reasoning': createOptimizedModel(
     deepseek('deepseek-reasoner', {
-      temperature: 0.7,
+      ...( { temperature: 0.7,
       topP: 0.95,
-      maxTokens: 32768, // Maximum for detailed reasoning
-      presencePenalty: 0.1, // Encourage diverse reasoning
-      frequencyPenalty: 0.1, // Reduce repetition in reasoning
+      maxTokens: 65536, // Massive context for complex reasoning
+      presencePenalty: 0.1,
+      frequencyPenalty: 0.1,
+      streamingEnabled: true,
+      parallelStreaming: true,
+      fastMode: true,
+      cacheEnabled: true,
+      reasoningOptimization: true, } as any),
     }), 
-    { 
+    ( { 
       reasoning: true, 
       reasoningTag: 'think',
-      persistReasoning: true, // Keep reasoning active throughout response
-      reasoningDepth: 'deep' // Enable deeper reasoning analysis
-    }
-  ),
-  'vision-model': deepseek('deepseek-vl', {
-    temperature: 0.7,
-    topP: 0.95,
-    maxTokens: 16384, // Large context for vision tasks
-  }),
-  'web-search-model': createOptimizedModel(
-    deepseek('deepseek-coder', {
-      temperature: 0.7,
-      topP: 0.9,
-      maxTokens: 24576, // Large context for search results
-    }),
-    { reasoning: true, reasoningTag: 'search' }
+      persistReasoning: true,
+      reasoningDepth: 'deep',
+      instantSwitch: true,
+      fastReasoning: true,
+    } as any)
   ),
 
-  // Groq models - maximum performance settings
-  'chat-model1': groq('llama-3.1-70b-versatile', {
-    // Using correct property names for Groq
-    temperature: 0.7,
-    topP: 0.9,
-    maxCompletionTokens: 32768, // Groq uses maxCompletionTokens
-  }),
-  'chat-model2': groq('llama-3.1-405b-reasoning', {
-    temperature: 0.8,
-    topP: 0.95,
-    maxCompletionTokens: 32768, // Maximum for 405B model
+'chat-model1': google('models/gemini-2.5-flash', {
+  temperature: 0.7,
+  topP: 0.8,
+  maxTokens: 65536,
+  streamingEnabled: true,
+  parallelStreaming: true,
+  fastMode: true,
+  cacheEnabled: true,
+  instantSwitch: true,
+  defaultObjectGenerationMode: 'generic', 
+}),
+  'chat-model2': groq('moonshotai/kimi-k2-instruct', {
+  ...( { temperature: 0.8,
+  topP: 0.95,
+  maxCompletionTokens: 65536, // Maximum for complex projects
+  streamingEnabled: true,
+  parallelStreaming: true,
+  fastMode: true,
+  cacheEnabled: true,
+  instantSwitch: true, } as any),
   }),
   'chat-model3': createOptimizedModel(
-    groq('llama-3.1-70b-versatile', {
-      temperature: 0.7,
-      topP: 0.9,
-      maxCompletionTokens: 32768, // Large context for reasoning
+    groq('openai/gpt-oss-120b', {
+  ...( { temperature: 0.7,
+  topP: 0.9,
+  maxTokens: 32768, // Large context window
+  presencePenalty: 0.1,
+  frequencyPenalty: 0.1, } as any),
     }), 
-    { reasoning: true, reasoningTag: 'think' }
+    ( { 
+      reasoning: true, 
+      reasoningTag: 'think',
+      instantSwitch: true,
+      fastReasoning: true,
+    } as any)
   ),
   'title-model': groq('llama-3.1-8b-instant', {
-    temperature: 0.3,
-    maxCompletionTokens: 512, // Sufficient for titles
+  ...( { temperature: 0.3,
+  maxCompletionTokens: 512, // Sufficient for titles
+  } as any),
   }),
   'artifact-model': deepseek('deepseek-coder', {
-    temperature: 0.5,
-    maxTokens: 16384, // Large context for code generation
+  ...( { temperature: 0.5,
+  maxTokens: 16384, // Large context for code generation
+  } as any),
   }),
 };
 
@@ -109,9 +126,80 @@ const testModels: Record<string, LanguageModelV1> = {
   'chat-model1': chatModel,
   'chat-model2': chatModel,
   'chat-model3': reasoningModel,
-  'web-search-model': chatModel, // Use chatModel for testing
 };
 
-export const myProvider = customProvider({
+// Model caching and preloading for instant switching
+const modelCache = new Map<string, LanguageModelV1>();
+const preloadedModels = new Set<string>();
+
+// Preload frequently used models
+const warmupModel = async (model: LanguageModelV1, timeoutMs = 2000) => {
+  try {
+    // Fire a tiny generateText to warm up connections. We race with a timeout to avoid blocking.
+    const p = generateText({
+      model,
+      messages: [
+        {
+          role: 'user',
+          content: '.',
+        },
+      ],
+      maxTokens: 1,
+      temperature: 0,
+    });
+
+    await Promise.race([
+      p,
+      new Promise((_, rej) => setTimeout(() => rej(new Error('warmup:timeout')), timeoutMs)),
+    ]);
+  } catch {
+    // Swallow errors - warmup is best-effort only
+  }
+};
+
+const preloadModel = async (modelId: string, doWarmup = true) => {
+  if (!preloadedModels.has(modelId)) {
+    const model = isTestEnvironment ? testModels[modelId] : productionModels[modelId];
+    if (model) {
+      modelCache.set(modelId, model);
+      preloadedModels.add(modelId);
+
+      // Warm up in background but don't block caller
+      if (doWarmup) {
+        // run but don't await
+        void warmupModel(model).catch(() => {});
+      }
+    }
+  }
+};
+
+// Preload all models for instant switching
+const initializeModelCache = async () => {
+  const models = isTestEnvironment ? testModels : productionModels;
+  // Populate cache quickly and start warmups in background
+  Object.keys(models).forEach((id) => void preloadModel(id, true));
+};
+
+// Initialize cache immediately
+initializeModelCache();
+
+export const myProvider = customProvider(({
   languageModels: isTestEnvironment ? testModels : productionModels,
-});
+  
+  // Ultra-fast model retrieval with caching
+  languageModel: (modelId: string) => {
+    const cachedModel = modelCache.get(modelId);
+    if (cachedModel) {
+      return cachedModel;
+    }
+    
+    const model = isTestEnvironment ? testModels[modelId] : productionModels[modelId];
+    if (model) {
+      modelCache.set(modelId, model);
+    }
+    return model;
+  },
+} as any));
+
+// Export helpers so other modules (preload route) can trigger cache/warmup
+export { preloadModel, warmupModel };
