@@ -47,7 +47,7 @@ const PurePreviewMessage = ({
     <AnimatePresence>
       <motion.div
         data-testid={`message-${message.role}`}
-        className="w-full mx-auto max-w-[52rem] px-4 group/message"
+        className="w-full mx-auto max-w-[49rem] px-4 group/message"
         initial={{ y: 5, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
         data-role={message.role}
@@ -91,7 +91,7 @@ const PurePreviewMessage = ({
                 return (
                   <MessageReasoning
                     key={key}
-                    isLoading={isLoading}
+                    isLoading={isLoading && index === (message.parts?.length || 1) - 1}
                     reasoning={part.reasoning}
                   />
                 );
@@ -256,27 +256,50 @@ export const ThinkingMessage = () => {
 
 
   return (
-    <motion.div
-      data-testid="message-assistant-loading"
-      className="w-full mx-auto max-w-3xl px-4 group/message min-h-96"
-      initial={{ y: 5, opacity: 0 }}
-      animate={{ y: 0, opacity: 1, transition: { delay: 1 } }}
-      data-role={role}
-    >
-      <div
-        className={cx(
-          'flex gap-4 group-data-[role=user]/message:px-3 w-full group-data-[role=user]/message:w-fit group-data-[role=user]/message:ml-auto group-data-[role=user]/message:max-w-2xl group-data-[role=user]/message:py-2 rounded-xl',
-          {
-            'group-data-[role=user]/message:bg-muted': true,
-          },
-        )}
+    <>
+      <style jsx>{`
+        .loader {
+          width: 24px;
+          height: 24px;
+          border: 4px solid #000000;
+          border-bottom-color: transparent;
+          border-radius: 50%;
+          display: inline-block;
+          box-sizing: border-box;
+          animation: rotation 0.5s linear infinite;
+        }
+
+        @keyframes rotation {
+          0% {
+            transform: rotate(0deg);
+          }
+          100% {
+            transform: rotate(360deg);
+          }
+        }
+      `}</style>
+      <motion.div
+        data-testid="message-assistant-loading"
+        className="w-full mx-auto max-w-3xl px-4 group/message min-h-96"
+        initial={{ y: 5, opacity: 0 }}
+        animate={{ y: 0, opacity: 1, transition: { delay: 1 } }}
+        data-role={role}
       >
-        <div className="flex flex-col gap-2 w-full">
-          <div className="flex flex-col gap-4 text-muted-foreground">
-            Hmm...
+        <div
+          className={cx(
+            'flex gap-4 group-data-[role=user]/message:px-3 w-full group-data-[role=user]/message:w-fit group-data-[role=user]/message:ml-auto group-data-[role=user]/message:max-w-2xl group-data-[role=user]/message:py-2 rounded-xl',
+            {
+              'group-data-[role=user]/message:bg-muted': true,
+            },
+          )}
+        >
+          <div className="flex flex-col gap-2 w-full">
+            <div className="flex flex-col gap-4 text-muted-foreground">
+              <span className="loader"></span>
+            </div>
           </div>
         </div>
-      </div>
-    </motion.div>
+      </motion.div>
+    </>
   );
 };
