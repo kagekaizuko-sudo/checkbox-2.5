@@ -3,7 +3,7 @@
 
 import type { Attachment, UIMessage } from "ai"
 import { useChat } from "@ai-sdk/react"
-import { useEffect, useState, useRef } from "react" // Added useRef for scrolling
+import { useEffect, useState, useRef, useCallback } from "react" // Added useRef for scrolling
 import useSWR, { useSWRConfig } from "swr"
 import { ChatHeader } from "@/components/chat-header"
 import type { Vote } from "@/lib/db/schema"
@@ -19,6 +19,7 @@ import { toast } from "./toast"
 import type { Session } from "next-auth"
 import { useSearchParams } from "next/navigation"
 import { useChatVisibility } from "@/hooks/use-chat-visibility"
+import { useWebSearchState } from "@/hooks/use-web-search-state"
 
 
 // Define the props interface for the Chat component
@@ -76,6 +77,13 @@ export function Chat({
       },
     })
 
+  // Initialize enhanced web search hook with chat integration
+  const webSearchState = useWebSearchState({
+    append,
+    input,
+    setInput,
+  })
+
 
   // Auto-scroll to bottom during streaming/message updates
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -117,13 +125,9 @@ export function Chat({
   const isArtifactVisible = useArtifactSelector((state) => state.isVisible)
 
 
-  const handleModelChange = (newModelId: string) => {
+  const handleModelChange = useCallback((newModelId: string) => {
     setCurrentChatModel(newModelId)
-    toast({
-      type: "success",
-      description: `Switched to ${newModelId}`,
-    })
-  }
+  }, [])
 
 
   return (
@@ -150,7 +154,7 @@ export function Chat({
             isReadonly={isReadonly}
             isArtifactVisible={isArtifactVisible}
           />
-          
+
         )}
         <div ref={messagesEndRef} /> {/* Scroll anchor for streaming */}
 
@@ -174,12 +178,14 @@ export function Chat({
                   session={session}
                   selectedModelId={currentChatModel}
                   onModelChange={handleModelChange}
+                  onWebSearch={webSearchState?.handleWebSearch}
+                  webSearchState={webSearchState}
                 />
               )}
             </form>
           </div>
         ) : (
-          <form className="flex mx-auto px-4 pb-4 md:pb-6 gap-2 w-full md:max-w-[52rem]">
+          <form className="flex mx-auto px-4 pb-4 md:pb-6 gap-2 w-full md:max-w-[50rem]">
             {!isReadonly && (
               <MultimodalInput
                 chatId={id}
@@ -197,6 +203,8 @@ export function Chat({
                 session={session}
                 selectedModelId={currentChatModel}
                 onModelChange={handleModelChange}
+                onWebSearch={webSearchState?.handleWebSearch}
+                webSearchState={webSearchState}
               />
             )}
           </form>
