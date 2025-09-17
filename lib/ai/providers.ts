@@ -131,19 +131,15 @@ const testModels: Record<string, LanguageModelV1> = {
 // Model caching and preloading for instant switching
 const modelCache = new Map<string, LanguageModelV1>();
 const preloadedModels = new Set<string>();
+const modelWarmupQueue = new Set<string>();
 
-// Preload frequently used models
-const warmupModel = async (model: LanguageModelV1, timeoutMs = 2000) => {
+// Enhanced preload with priority queue and background warming
+const warmupModel = async (model: LanguageModelV1, timeoutMs = 1500) => {
   try {
-    // Fire a tiny generateText to warm up connections. We race with a timeout to avoid blocking.
+    // Fire a tiny generateText to warm up connections with shorter timeout
     const p = generateText({
       model,
-      messages: [
-        {
-          role: 'user',
-          content: '.',
-        },
-      ],
+      messages: [{ role: 'user', content: '.' }],
       maxTokens: 1,
       temperature: 0,
     });
@@ -158,16 +154,24 @@ const warmupModel = async (model: LanguageModelV1, timeoutMs = 2000) => {
 };
 
 const preloadModel = async (modelId: string, doWarmup = true) => {
-  if (!preloadedModels.has(modelId)) {
-    const model = isTestEnvironment ? testModels[modelId] : productionModels[modelId];
-    if (model) {
-      modelCache.set(modelId, model);
-      preloadedModels.add(modelId);
+  // Skip if already preloaded or in warmup queue
+  if (preloadedModels.has(modelId) || modelWarmupQueue.has(modelId)) {
+    return;
+  }
 
-      // Warm up in background but don't block caller
-      if (doWarmup) {
-        // run but don't await
-        void warmupModel(model).catch(() => {});
+  const model = isTestEnvironment ? testModels[modelId] : productionModels[modelId];
+  if (model) {
+    // Immediate cache population
+    modelCache.set(modelId, model);
+    preloadedModels.add(modelId);
+    
+    // Optimized background warmup
+    if (doWarmup && !modelWarmupQueue.has(modelId)) {
+      modelWarmupQueue.add(modelId);
+      try {
+        await warmupModel(model);
+      } finally {
+        modelWarmupQueue.delete(modelId);
       }
     }
   }
