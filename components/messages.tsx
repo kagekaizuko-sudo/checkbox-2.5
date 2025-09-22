@@ -41,7 +41,7 @@ function PureMessages({
   return (
     <div
       ref={messagesContainerRef}
-      className="flex flex-col min-w-0 gap-6 flex-1 overflow-y-scroll pt-4 relative scrollbar scrollbar-track-transparent scrollbar-thumb-current"
+      className="flex flex-col min-w-0 gap-6 flex-1 overflow-y-scroll pt-4 relative scrollbar scrollbar-track-transparent scrollbar-thumb-BubbleScrollbar"
     >
 
       {messages.map((message, index) => (
