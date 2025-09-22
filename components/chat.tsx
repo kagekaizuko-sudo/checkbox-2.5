@@ -19,7 +19,7 @@ import { toast } from "./toast"
 import type { Session } from "next-auth"
 import { useSearchParams } from "next/navigation"
 import { useChatVisibility } from "@/hooks/use-chat-visibility"
-import { useWebSearchState } from "@/hooks/use-web-search-state"
+
 
 
 // Define the props interface for the Chat component
@@ -77,12 +77,7 @@ export function Chat({
       },
     })
 
-  // Initialize enhanced web search hook with chat integration
-  const webSearchState = useWebSearchState({
-    append,
-    input,
-    setInput,
-  })
+  // web search integration removed — keep button visual only
 
 
   // Auto-scroll to bottom during streaming/message updates
@@ -178,8 +173,7 @@ export function Chat({
                   session={session}
                   selectedModelId={currentChatModel}
                   onModelChange={handleModelChange}
-                  onWebSearch={webSearchState?.handleWebSearch}
-                  webSearchState={webSearchState}
+                  /* web search integration removed */
                 />
               )}
             </form>
@@ -203,8 +197,7 @@ export function Chat({
                 session={session}
                 selectedModelId={currentChatModel}
                 onModelChange={handleModelChange}
-                onWebSearch={webSearchState?.handleWebSearch}
-                webSearchState={webSearchState}
+                /* web search integration removed */
               />
             )}
           </form>
@@ -218,6 +211,7 @@ export function Chat({
         setInput={setInput}
         status={status}
         stop={stop}
+        append={append}
         attachments={attachments}
         setAttachments={setAttachments}
         handleSubmit={handleSubmit}
