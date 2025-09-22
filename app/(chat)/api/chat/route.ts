@@ -25,7 +25,7 @@ import { requestSuggestions } from '@/lib/ai/tools/request-suggestions';
 import { getWeather } from '@/lib/ai/tools/get-weather';
 
 import { isProductionEnvironment } from '@/lib/constants';
-import { myProvider } from '@/lib/ai/providers';
+import { myProvider, preloadModel } from '@/lib/ai/providers';
 import { entitlementsByUserType } from '@/lib/ai/entitlements';
 import { postRequestBodySchema, type PostRequestBody } from './schema';
 import { geolocation } from '@vercel/functions';
@@ -184,6 +184,17 @@ export async function POST(request: Request) {
     const streamId = generateUUID();
     await createStreamId({ streamId, chatId: id });
 
+    // Ensure the requested model is preloaded/warmed (best-effort) before starting heavy work.
+    // Cap wait at 3s so we don't block requests excessively.
+    try {
+      await Promise.race([
+        preloadModel(selectedChatModel),
+        new Promise((_, rej) => setTimeout(() => rej(new Error('preload:timeout')), 5000)),
+      ]).catch(() => {});
+    } catch {
+      // swallow - best-effort
+    }
+
     const stream = createDataStream({
       execute: (dataStream) => {
         const result = streamText({
@@ -201,8 +212,8 @@ export async function POST(request: Request) {
                 ],
           experimental_transform: smoothStream({
             chunking: 'word', // Ultra-smooth character-by-character streaming
-            delayInMs: 1, // Ultra-fast streaming like ChatGPT/Grok
-            bufferSize: 1, // Minimal buffer for real-time feel
+            delayInMs: 5, // Ultra-fast streaming like ChatGPT/Grok
+            bufferSize: 5, // Minimal buffer for real-time feel
             mobileOptimized: true, // Mobile-specific optimizations
           }),
           experimental_generateMessageId: generateUUID,
