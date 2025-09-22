@@ -87,33 +87,45 @@ export function ModelSelector({
     return availableChatModels.find((chatModel) => chatModel.id === displayModelId) || null;
   }, [optimisticModelId, availableChatModels])
 
-  const handleModelSelect = (modelId: string) => {
+  const handleModelSelect = async (modelId: string) => {
     try {
-      // Immediate UI update for ultra-fast feedback
-      setOptimisticModelId(modelId)
-      setOpen(false)
+      // Start preloading the model immediately
+      fetch('/api/preload-model', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ modelId }),
+      }).catch(() => {}); // Fire and forget
 
-      // Immediate localStorage save for instant persistence
-      if (typeof window !== 'undefined') {
-        localStorage.setItem('selectedModel', modelId)
-        localStorage.setItem('modelSwitchTimestamp', Date.now().toString())
-      }
+      // Immediate UI feedback with loading state
+      startTransition(() => {
+        setOptimisticModelId(modelId);
+        setOpen(false);
+      });
 
-      // Immediate callback to parent
-      if (onModelChange) {
-        onModelChange(modelId)
-      }
-
-      // Background operations without blocking UI
-      requestAnimationFrame(() => {
+      // Parallel state updates for instant feedback
+      await Promise.all([
+        // Local storage update
+        new Promise<void>((resolve) => {
+          if (typeof window !== 'undefined') {
+            localStorage.setItem('selectedModel', modelId);
+            localStorage.setItem('modelSwitchTimestamp', Date.now().toString());
+          }
+          resolve();
+        }),
+        // Cookie update in background
         saveChatModelAsCookie(modelId).catch(console.warn)
-      })
-    } catch (error) {
-      console.error('Model switch error:', error)
-      // Fallback - still try to update UI
-      setOptimisticModelId(modelId)
+      ]);
+
+      // Callback after model is ready
       if (onModelChange) {
-        onModelChange(modelId)
+        onModelChange(modelId);
+      }
+    } catch (error) {
+      console.error('Model switch error:', error);
+      // Fallback UI update
+      setOptimisticModelId(modelId);
+      if (onModelChange) {
+        onModelChange(modelId);
       }
     }
   }
@@ -173,7 +185,7 @@ export function ModelSelector({
 
   const modelListContent = (
     <div className={cn("p-2 max-h-[calc(100%-40px)] overflow-y-auto rounded-xl")}>
-      <div className="px-1.5 py-1 text-[12px] font-mono text-muted-foreground uppercase tracking-wider">
+      <div className="px-2 py-1.5 text-[13px] font-medium text-muted-foreground/80 tracking-wide">
         Available Models
       </div>
       {availableChatModels.map((chatModel) => {
@@ -186,9 +198,9 @@ export function ModelSelector({
             data-testid={`model-selector-item-${id}`}
             onClick={() => handleModelSelect(id)}
             className={cn(
-              "flex items-center text- gap-2.5 px-1.5 py-3 cursor-pointer rounded-md",
-              "hover:bg-accent/20 focus:bg-accent/40 transition-colors",
-              isSelected && "bg-accent/40"
+              "flex items-center text- gap-2.5 px-2 py-2.5 cursor-pointer rounded-lg",
+              "hover:bg-accent/30 focus:bg-accent/40 transition-all duration-200 ease-out",
+              isSelected && "bg-accent/40 shadow-sm"
             )}
           >
 
@@ -245,8 +257,8 @@ export function ModelSelector({
       <DropdownMenuContent
         align="start"
         className={cn(
-          "max-h-[340px] overflow-y-auto custom-scrollbar p-0 bg-background border border-border shadow-sm scrollbar",
-          "min-w-[260px]"
+          "max-h-[340px] overflow-y-auto custom-scrollbar p-0 bg-background shadow-lg rounded-xl",
+          "min-w-[260px] backdrop-blur-sm animate-in fade-in-0 zoom-in-95 duration-200"
         )}
       >
         {modelListContent}
