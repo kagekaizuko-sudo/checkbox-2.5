@@ -30,6 +30,7 @@ import type { Session } from "next-auth";
 import { cn } from "@/lib/utils";
 import { WebSearchButton } from "./web-search-button";
 import { ImprovePromptButton } from "./improve-prompt-button";
+import SpeechButton from "./speech-button";
 
 // Utility function for UUID
 const generateUUID = () => crypto.randomUUID();
@@ -234,9 +235,10 @@ function PureMultimodalInput({
 
             {/* Centered Input Container */}
             <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ delay: 0.4, duration: 0.5 }}
+              // Use a subtle translate instead of scaling to avoid 'popping' effect on load
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.4, duration: 0.45 }}
               className="w-full max-w-4xl mx-auto"
             >
               <CenteredInputForm
@@ -257,7 +259,7 @@ function PureMultimodalInput({
                 session={session}
                 selectedModelId={selectedModelId}
                 onModelChange={onModelChange}
-                onWebSearch={onWebSearch}
+                /* web search removed */
               />
             </motion.div>
           </div>
@@ -323,7 +325,7 @@ function PureMultimodalInput({
             </div>
           )}
 
-          <BottomInputForm
+              <BottomInputForm
             textareaRef={textareaRef}
             input={input}
             setInput={setInput}
@@ -340,7 +342,7 @@ function PureMultimodalInput({
             session={session}
             selectedModelId={selectedModelId}
             onModelChange={onModelChange}
-            onWebSearch={onWebSearch}
+                /* web search removed */
           />
         </motion.div>
       )}
@@ -398,9 +400,10 @@ function CenteredInputForm({
 
       <div
         className={cn(
-          "flex w-full flex-col rounded-[1.5rem] bg-muted overflow-hidden cursor-text gap-2.5 border shadow-",
+          "flex w-full flex-col rounded-[1.5rem] bg-muted overflow-hidden cursor-text gap-2.5",
           className
         )}
+        style={{ boxShadow: 'rgba(0, 0, 0, 0.24) 0px 3px 8px', transition: 'box-shadow 180ms ease' }}
         onClick={handleInputFocus}
         onTouchStart={handleInputFocus}
       >
@@ -473,10 +476,13 @@ function CenteredInputForm({
 
           <div className="flex items-center gap-1">
             <AttachmentsButton fileInputRef={fileInputRef} status={status} />
+            {/* When streaming (status === 'submitted'), show only Stop. Otherwise show Send if input exists, else Speech */}
             {status === "submitted" ? (
               <StopButton stop={stop} setMessages={setMessages} />
-            ) : (
+            ) : input?.trim().length ? (
               <SendButton input={input} submitForm={submitForm} uploadQueue={uploadQueue} />
+            ) : (
+              <SpeechButton />
             )}
           </div>
         </div>
@@ -520,9 +526,9 @@ function BottomInputForm({
   return (
     <div
       className={cn(
-        "flex w-full flex-col grow rounded-[1.5rem] bg-muted border overflow-x-auto cursor-text gap-2.5",
-        className
+        "flex w-full flex-col grow rounded-[1.5rem] bg-muted overflow-x-auto cursor-text gap-2.5",
       )}
+      style={{ boxShadow: 'rgba(0, 0, 0, 0.24) 0px 3px 8px', transition: 'box-shadow 180ms ease' }}
     >
       {(attachments?.length > 0 || uploadQueue.length > 0) && (
         <div className="p-2 flex flex-row gap-2 overflow-x-auto items-end">
@@ -593,10 +599,13 @@ function BottomInputForm({
           </div>
           <div className="flex items-center px-0.5 gap-1">
             <AttachmentsButton fileInputRef={fileInputRef} status={status} />
+            {/* When streaming (status === 'submitted'), show only Stop. Otherwise Send if input exists, else Speech */}
             {status === "submitted" ? (
               <StopButton stop={stop} setMessages={setMessages} />
-            ) : (
+            ) : input?.trim().length ? (
               <SendButton input={input} submitForm={submitForm} uploadQueue={uploadQueue} />
+            ) : (
+              <SpeechButton />
             )}
           </div>
         </div>
@@ -641,7 +650,6 @@ function InputStyles() {
       [data-testid="multimodal-input"]:focus {
         border-color: #3b82f6;
         box-shadow: 0 0 10px rgba(59, 130, 246, 0.3);
-        transform: scale(1.01);
       }
 
       [data-testid="multimodal-input"]:hover {
