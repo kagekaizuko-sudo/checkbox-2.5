@@ -2,6 +2,7 @@
 
 import type React from "react"
 import { useEffect, useRef, useState } from "react"
+import { useTheme } from "next-themes"
 import hljs from "highlight.js"
 import { useArtifact } from "@/hooks/use-artifact"
 import { CopyIcon1, PencilHeartIcon, CollapseIcon, ExpandIcon } from "./icons"
@@ -86,7 +87,7 @@ const codeThemeStylesDark = `
   .hljs-text {}
   
   /* Numbers and Constants - Light Purple */
-  .hljs-number,
+  
   .hljs-literal,
   .hljs-constant {
     color: #B5CEA8 !important;
@@ -114,8 +115,10 @@ const codeThemeStylesDark = `
   /* Variables and Properties - Default Light Gray */
   .hljs-attr,
   .hljs-variable,
+
   .hljs-template-variable,
   .hljs-property,
+  .hljs-number,
   .hljs-attribute {
     color: #df3079 !important;
   }
@@ -365,19 +368,9 @@ export function CodeBlock({
   const [isCopied, setIsCopied] = useState(false)
   const [isCollapsed, setIsCollapsed] = useState(false)
   const [isEditing, setIsEditing] = useState(false)
-  const [theme, setTheme] = useState<"dark" | "light">("dark") // Default to dark
-
-  // Detect system theme
-  useEffect(() => {
-    const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)")
-    setTheme(mediaQuery.matches ? "dark" : "light")
-
-    const handleChange = (e: MediaQueryListEvent) => {
-      setTheme(e.matches ? "dark" : "light")
-    }
-    mediaQuery.addEventListener("change", handleChange)
-    return () => mediaQuery.removeEventListener("change", handleChange)
-  }, [])
+  const { theme: resolvedTheme } = useTheme()
+  // fallback to dark if undefined
+  const theme = resolvedTheme === "light" ? "light" : "dark"
 
   // Inject theme styles based on detected theme
   useEffect(() => {
@@ -468,7 +461,7 @@ export function CodeBlock({
     return (
       <code
         ref={codeRef}
-        className={`${className || "language-plaintext"} inline-block max-w-full break-words [overflow-wrap:anywhere] bg-snippet px-2 py-1 text-sm rounded`}
+  className={`${className || "language-plaintext"} inline-block max-w-full [overflow-wrap:anywhere] bg-snippet px-2 py-1 text-sm rounded`}
         {...props}
       >
         {children}
@@ -513,11 +506,11 @@ export function CodeBlock({
         </div>
       </div>
       <div className={isCollapsed ? "hidden" : "block"}>
-        <div className={`w-full max-w-full overflow-x-auto rounded-b-2xl text-sm font-inherit p-4 bg-snippet scrollbar scrollbar-track-transparent scrollbar-thumb-muted`}>
+        <div className={`w-full max-w-full overflow-x-auto rounded-b-2xl text-sm font-inherit p-4 bg-snippet scrollbar scrollbar-track-transparent scrollbar-thumb-BubbleScrollbar`}>
           <pre className="w-full max-w-full min-w-0 leading-relaxed">
             <code
               ref={codeRef}
-              className={`block w-full max-w-full min-w-0 whitespace-pre-wrap break-words max-sm:break-all [overflow-wrap:anywhere] ${
+              className={`block w-full max-w-full min-w-0 whitespace-pre-wrap max-sm:break-all [overflow-wrap:anywhere] ${
                 isOutput ? (theme === "light" ? "text-black" : "") : ""
               }`}
             >
