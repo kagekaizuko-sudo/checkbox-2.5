@@ -28,8 +28,8 @@ export const reasoningModel = new MockLanguageModelV1({
   }),
   doStream: async ({ prompt }) => ({
     stream: simulateReadableStream({
-      chunkDelayInMs: 15, // Reduced from 1000ms
-      initialDelayInMs: 100, // Reduced from 10000ms
+      chunkDelayInMs: 3, // Ultra-fast reasoning streaming
+      initialDelayInMs: 5, // Near-instant reasoning start
       chunks: getResponseChunksByPrompt(prompt, true),
     }),
     rawCall: { rawPrompt: null, rawSettings: {} },
@@ -87,8 +87,8 @@ export const chatModel1 = new MockLanguageModelV1({
   }),
   doStream: async ({ prompt }) => ({
     stream: simulateReadableStream({
-      chunkDelayInMs: 8, // Reduced from 500ms
-      initialDelayInMs: 40, // Reduced from 1000ms
+      chunkDelayInMs: 2, // Ultra-fast streaming
+      initialDelayInMs: 5, // Instant start
       chunks: getResponseChunksByPrompt(prompt),
     }),
     rawCall: { rawPrompt: null, rawSettings: {} },
@@ -104,8 +104,8 @@ export const chatModel2 = new MockLanguageModelV1({
   }),
   doStream: async ({ prompt }) => ({
     stream: simulateReadableStream({
-      chunkDelayInMs: 12, // Reduced from 500ms
-      initialDelayInMs: 60, // Reduced from 1000ms
+      chunkDelayInMs: 3, // Ultra-fast streaming
+      initialDelayInMs: 8, // Near-instant start
       chunks: getResponseChunksByPrompt(prompt),
     }),
     rawCall: { rawPrompt: null, rawSettings: {} },
@@ -121,8 +121,8 @@ export const chatModel3 = new MockLanguageModelV1({
   }),
   doStream: async ({ prompt }) => ({
     stream: simulateReadableStream({
-      chunkDelayInMs: 20, // Reduced from 50000ms (!!)
-      initialDelayInMs: 100, // Reduced from 100000ms (!!)
+      chunkDelayInMs: 5, // Ultra-fast like production
+      initialDelayInMs: 10, // Instant start
       chunks: getResponseChunksByPrompt(prompt),
     }),
     rawCall: { rawPrompt: null, rawSettings: {} },
