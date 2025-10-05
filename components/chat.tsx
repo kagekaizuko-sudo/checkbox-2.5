@@ -10,6 +10,7 @@ import type { Vote } from "@/lib/db/schema"
 import { fetcher, generateUUID } from "@/lib/utils"
 import { Artifact } from "./artifact"
 import { MultimodalInput } from "./multimodal-input"
+import Starfield from "./Starfield"
 import { Messages } from "./messages"
 import type { VisibilityType } from "./visibility-selector"
 import { useArtifactSelector } from "@/hooks/use-artifact"
@@ -127,7 +128,7 @@ export function Chat({
 
   return (
     <>
-      <div className="flex flex-col min-w-0 h-dvh overflow-hidden bg-background">
+  <div className="flex flex-col min-w-0 h-dvh overflow-hidden bg-background relative z-10">
         <ChatHeader
           chatId={id}
           selectedModelId={currentChatModel}
@@ -154,7 +155,8 @@ export function Chat({
         <div ref={messagesEndRef} /> {/* Scroll anchor for streaming */}
 
         {messages.length === 0 ? (
-          <div className="flex-1 flex items-center justify-center w-full px-4 pb-4 md:pb-6">
+          <div className="relative flex-1 flex items-center justify-center w-full px-4 pb-4 md:pb-6">
+ 
             <form className="flex mx-auto gap-2 w-full md:max-w-[50rem]">
               {!isReadonly && (
                 <MultimodalInput
