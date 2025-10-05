@@ -6,6 +6,7 @@ import type React from "react";
 import {
   useRef,
   useEffect,
+  useLayoutEffect,
   useState,
   useCallback,
   type Dispatch,
@@ -75,22 +76,45 @@ function PureMultimodalInput({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const { width } = useWindowSize();
 
+  // Key for storing unsent input per chat so switching models or refresh doesn't clear it
+  const unsentKey = `unsentInput:${chatId}`;
+  // persistent localStorage key per chat (survives full page refresh)
+  const perChatLocalKey = `box:unsent:${chatId}`;
+
+  // Track model changes to avoid running initial animations when only the model changes.
+  const prevSelectedModelIdRef = useRef<string | null>(selectedModelId);
+  const [hasMounted, setHasMounted] = useState(false);
+  useEffect(() => {
+    setHasMounted(true);
+  }, []);
+  const isModelSwitch = hasMounted && prevSelectedModelIdRef.current !== selectedModelId;
+  useEffect(() => {
+    prevSelectedModelIdRef.current = selectedModelId;
+  }, [selectedModelId]);
+
   // Fallback for undefined messages
   const safeMessages = messages || [];
 
   // Check if this is a new/empty chat
   const isEmptyChat = safeMessages.length === 0;
 
-  // Clear input and localStorage when a new chat starts
+  // Clear input when the user switches to a different chat and the new chat is empty.
+  // Do NOT clear on model switches or refreshes.
+  const prevChatIdRef = useRef<string | null>(null);
   useEffect(() => {
-    if (safeMessages.length === 0) {
+    if (!chatId) return;
+    if (prevChatIdRef.current !== chatId && safeMessages.length === 0) {
       setInput("");
-      setLocalStorageInput("");
-      if (textareaRef.current) {
-        textareaRef.current.value = "";
+      try {
+        sessionStorage.removeItem(`unsentInput:${chatId}`);
+        localStorage.removeItem(perChatLocalKey);
+      } catch (e) {
+        // ignore
       }
+      if (textareaRef.current) textareaRef.current.value = "";
     }
-  }, [chatId, safeMessages.length, setInput]);
+    prevChatIdRef.current = chatId;
+  }, [chatId, safeMessages.length, setInput, perChatLocalKey]);
 
   // Adjust textarea height
   useEffect(() => {
@@ -102,7 +126,7 @@ function PureMultimodalInput({
   const adjustHeight = () => {
     if (textareaRef.current) {
       textareaRef.current.style.height = "auto";
-      textareaRef.current.style.height = `${textareaRef.current.scrollHeight + (attachments.length * 80) + 2}px`;
+      textareaRef.current.style.height = `${textareaRef.current.scrollHeight + (attachments.length * 82)}px`;
     }
   };
 
@@ -116,7 +140,7 @@ function PureMultimodalInput({
   // Sync localStorage with input
   const [localStorageInput, setLocalStorageInput] = useLocalStorage("input", "");
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (textareaRef.current) {
       const domValue = textareaRef.current.value;
       const finalValue = domValue || localStorageInput || "";
@@ -128,6 +152,29 @@ function PureMultimodalInput({
   useEffect(() => {
     setLocalStorageInput(input);
   }, [input, setLocalStorageInput]);
+
+  // Autosave unsent input to sessionStorage so model switches or UI changes don't clear it
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(unsentKey, input || "");
+    } catch (e) {
+      // ignore
+    }
+  }, [input, unsentKey]);
+
+  // Restore input when model changes (don't clear on model switch)
+  useEffect(() => {
+    try {
+      const saved = sessionStorage.getItem(unsentKey) || "";
+      if (saved && saved !== input) {
+        setInput(saved);
+        if (textareaRef.current) textareaRef.current.value = saved;
+      }
+    } catch (e) {
+      // ignore
+    }
+    // we intentionally depend on selectedModelId so this runs when model changes
+  }, [selectedModelId]);
 
   const handleInput = (event: React.ChangeEvent<HTMLTextAreaElement>) => {
     setInput(event.target.value);
@@ -176,6 +223,56 @@ function PureMultimodalInput({
     }
   };
 
+  // Allow pasting images (Ctrl+V) into the textarea and handle dropped files
+  const handlePaste = useCallback(async (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+
+    const imageFiles: File[] = [];
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      if (item && item.type && item.type.startsWith("image/")) {
+        const file = item.getAsFile();
+        if (file) imageFiles.push(file);
+      }
+    }
+
+    if (imageFiles.length > 0) {
+      e.preventDefault();
+      setUploadQueue((q) => [...q, ...imageFiles.map((f) => f.name)]);
+      try {
+        const uploads = await Promise.all(imageFiles.map((f) => uploadFile(f)));
+        const successes = uploads.filter((u) => u !== undefined) as any[];
+        setAttachments((curr) => [...curr, ...successes]);
+      } catch (err) {
+        console.error("Failed to upload pasted images", err);
+      } finally {
+        setUploadQueue([]);
+      }
+    }
+  }, [setAttachments, uploadFile]);
+
+  const handleDrop = useCallback(async (e: React.DragEvent) => {
+    e.preventDefault();
+    const files = Array.from(e.dataTransfer?.files || []);
+    if (files.length === 0) return;
+
+    setUploadQueue(files.map((f) => f.name));
+    try {
+      const uploads = await Promise.all(files.map((f) => uploadFile(f)));
+      const successes = uploads.filter((u) => u !== undefined) as any[];
+      setAttachments((curr) => [...curr, ...successes]);
+    } catch (err) {
+      console.error("Failed to upload dropped files", err);
+    } finally {
+      setUploadQueue([]);
+    }
+  }, [setAttachments, uploadFile]);
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+  }, []);
+
   const handleFileChange = useCallback(
     async (event: ChangeEvent<HTMLInputElement>) => {
       const files = Array.from(event.target.files || []);
@@ -214,33 +311,18 @@ function PureMultimodalInput({
         <div className="flex flex-col items-center min-h-[40vh] w-full">
           <div className="w-full max-w-3xl">
             {/* Chat Title */}
-            <motion.div
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.2, duration: 0.5 }}
-              className="text-center mb-6"
-            >
               <h1
-                className="flex font-bold text-ellipsis overflow-hidden text-[rgba(6, 182, 212, 0.2)] dark:text-[rgba(0, 255, 255, 0.2)]"
+                className="flex text-ellipsis font-[400] overflow-hidden mb-6 text-[rgba(6, 182, 212, 0.2)] dark:text-[rgba(0, 255, 255, 0.2)]"
                 style={{
-                  fontSize: "1.5rem",
+                  fontSize: "28px",
                   minHeight: "2rem",
                   alignItems: "center",
                   justifyContent: "center",
                 }}
               >
-                What can I help you today?
+                What’s on your mind today?
               </h1>
-            </motion.div>
-
             {/* Centered Input Container */}
-            <motion.div
-              // Use a subtle translate instead of scaling to avoid 'popping' effect on load
-              initial={{ opacity: 0, y: 6 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.4, duration: 0.45 }}
-              className="w-full max-w-4xl mx-auto"
-            >
               <CenteredInputForm
                 textareaRef={textareaRef}
                 input={input}
@@ -259,9 +341,11 @@ function PureMultimodalInput({
                 session={session}
                 selectedModelId={selectedModelId}
                 onModelChange={onModelChange}
+                handlePaste={handlePaste}
+                handleDrop={handleDrop}
+                handleDragOver={handleDragOver}
                 /* web search removed */
               />
-            </motion.div>
           </div>
         </div>
       )}
@@ -269,7 +353,7 @@ function PureMultimodalInput({
       {/* Bottom Layout for Active Chat */}
       {!isEmptyChat && (
         <motion.div
-          initial={{ opacity: 0, y: 20 }}
+          initial={isModelSwitch ? false : { opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.3 }}
           className="relative w-full flex flex-col gap-4"
@@ -278,7 +362,7 @@ function PureMultimodalInput({
             <div className="absolute right-1.5">
               {!isAtBottom && (
                 <motion.div
-                  initial={{ opacity: 0, y: 10 }}
+                  initial={isModelSwitch ? false : { opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: 10 }}
                   transition={{ type: "spring", stiffness: 300, damping: 20 }}
@@ -325,7 +409,7 @@ function PureMultimodalInput({
             </div>
           )}
 
-              <BottomInputForm
+          <BottomInputForm
             textareaRef={textareaRef}
             input={input}
             setInput={setInput}
@@ -342,6 +426,9 @@ function PureMultimodalInput({
             session={session}
             selectedModelId={selectedModelId}
             onModelChange={onModelChange}
+            handlePaste={handlePaste}
+            handleDrop={handleDrop}
+            handleDragOver={handleDragOver}
                 /* web search removed */
           />
         </motion.div>
@@ -370,6 +457,9 @@ function CenteredInputForm({
   selectedModelId,
   onModelChange,
   onWebSearch,
+  handlePaste,
+  handleDrop,
+  handleDragOver,
 }: any) {
   const handleInputFocus = useCallback((e: React.MouseEvent | React.TouchEvent) => {
     e.preventDefault();
@@ -399,13 +489,14 @@ function CenteredInputForm({
       />
 
       <div
-        className={cn(
-          "flex w-full flex-col rounded-[1.5rem] bg-muted overflow-hidden cursor-text gap-2.5",
-          className
-        )}
-        style={{ boxShadow: 'rgba(0, 0, 0, 0.24) 0px 3px 8px', transition: 'box-shadow 180ms ease' }}
+          className={cn(
+            "flex w-full flex-col rounded-[1.5rem] bg-muted overflow-hidden cursor-text gap-1.5",
+          )}
+        style={{ boxShadow: 'rgba(0, 0, 0, 0.05) 0px 6px 24px 0px, rgba(0, 0, 0, 0.08) 0px 0px 0px 1px' }}
         onClick={handleInputFocus}
         onTouchStart={handleInputFocus}
+        onDrop={handleDrop}
+        onDragOver={handleDragOver}
       >
         {(attachments?.length > 0 || uploadQueue.length > 0) && (
           <div className="p-2 flex flex-row gap-2 overflow-x-auto items-end border-b-[2.5px]">
@@ -423,27 +514,28 @@ function CenteredInputForm({
         )}
 
         <div className="flex w-full flex-col">
-          <div className="relative text-base">
+          <div className="relative text-base px-4">
             <Textarea
               data-testid="multimodal-input"
               ref={textareaRef}
               value={input}
               onChange={handleInput}
+              onPaste={handlePaste}
+              onDrop={(e) => e.preventDefault()}
               className={cx(
-                "w-full h-full flex overflow-y-auto resize-none cursor-text focus:ring-0 focus:border-0 scrollbar-thin scrollbar-thumb-foreground scrollbar-track-transparent",
+                "w-full h-full flex overflow-y-auto resize-none cursor-text focus:ring-0 focus:border-0",
                 className,
               )}
               rows={1}
               autoFocus
               placeholder="Message Checkbox"
               onKeyDown={handleKeyDown}
-              style={{ paddingLeft: '16px', backgroundColor: 'transparent !important' }}
+              style={{ paddingLeft: '', backgroundColor: 'transparent !important' }}
             />
           </div>
         </div>
-
-        <div className="flex justify-between items-center rounded-b-[1.5rem] p-2.5">
-          <div className="flex items-center gap-1.5">
+        <div className="flex justify-between items-center rounded-b-[1.5rem] px-2.5 py-2.5">
+          <div className="flex items-center gap-2.5">
             <ThinkButton
                selectedModelId={selectedModelId}
                onModelChange={onModelChange!}
@@ -511,6 +603,9 @@ function BottomInputForm({
   selectedModelId,
   onModelChange,
   onWebSearch,
+  handlePaste,
+  handleDrop,
+  handleDragOver,
 }: any) {
   const handleKeyDown = useCallback((event: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
@@ -526,9 +621,11 @@ function BottomInputForm({
   return (
     <div
       className={cn(
-        "flex w-full flex-col grow rounded-[1.5rem] bg-muted overflow-x-auto cursor-text gap-2.5",
+        "flex w-full flex-col grow rounded-[1.5rem] bg-muted overflow-x-auto cursor-text gap-2",
       )}
-      style={{ boxShadow: 'rgba(0, 0, 0, 0.24) 0px 3px 8px', transition: 'box-shadow 180ms ease' }}
+      style={{ boxShadow: 'rgba(0, 0, 0, 0.05) 0px 6px 24px 0px, rgba(0, 0, 0, 0.08) 0px 0px 0px 1px' }}
+      onDrop={handleDrop}
+      onDragOver={handleDragOver}
     >
       {(attachments?.length > 0 || uploadQueue.length > 0) && (
         <div className="p-2 flex flex-row gap-2 overflow-x-auto items-end">
@@ -546,28 +643,31 @@ function BottomInputForm({
       )}
 
       <div className="flex w-full flex-col">
-        <div className="relative">
+          <div className="relative text-base px-4">
           <Textarea
             data-testid="multimodal-input"
             ref={textareaRef}
             value={input}
             onChange={handleInput}
+            onPaste={handlePaste}
+            onDrop={(e) => e.preventDefault()}
             className={cx(
-              "w-full flex overflow-x-auto overflow-y-auto resize-none rounded-t-[1.5rem] bg-transparent cursor-text focus:ring-0 focus:border-0 scrollbar-thin scrollbar-thumb-foreground scrollbar-track-muted",
+              "w-full h-full flex overflow-y-auto resize-none cursor-text focus:ring-0 focus:border-0",
               className,
             )}
             rows={1}
             autoFocus
-            placeholder="Ask Anything"
+            placeholder="Ask anything"
             onKeyDown={handleKeyDown}
-            style={{ paddingLeft: '16px', backgroundColor: 'transparent !important' }}
+            style={{ paddingLeft: '', backgroundColor: 'transparent !important' }}
           />
         </div>
       </div>
 
-      <div className="flex justify-between w-full pt-14 cursor-auto gap-1">
-        <div className="absolute bottom-0 p-2 w-full rounded-b-[1.5rem] flex justify-between items-center gap-2">
-          <div className="flex items-center gap-1.5">
+      
+      <div className="flex w-full pt-14 cursor-auto gap-1">
+        <div className="absolute bottom-0 p-2.5 w-full rounded-b-[1.5rem] flex justify-between items-center gap-2">
+          <div className="flex items-center gap-2.5">
             <ThinkButton
                selectedModelId={selectedModelId}
                onModelChange={onModelChange!}
