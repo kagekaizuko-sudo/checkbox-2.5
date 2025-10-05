@@ -19,6 +19,7 @@ import { MessageEditor } from './message-editor';
 import { DocumentPreview } from './document-preview';
 import { MessageReasoning } from './message-reasoning';
 import type { UseChatHelpers } from '@ai-sdk/react';
+import ShimmerText from './shimmer';
 
 
 const PurePreviewMessage = ({
@@ -41,8 +42,6 @@ const PurePreviewMessage = ({
   requiresScrollPadding: boolean;
 }) => {
   const [mode, setMode] = useState<'view' | 'edit'>('view');
-
-
   return (
     <AnimatePresence>
       <motion.div
@@ -257,27 +256,7 @@ export const ThinkingMessage = () => {
 
   return (
     <>
-      <style jsx>{`
-        .loader {
-          width: 24px;
-          height: 24px;
-          border: 4px solid #000000;
-          border-bottom-color: transparent;
-          border-radius: 50%;
-          display: inline-block;
-          box-sizing: border-box;
-          animation: rotation 0.5s linear infinite;
-        }
-
-        @keyframes rotation {
-          0% {
-            transform: rotate(0deg);
-          }
-          100% {
-            transform: rotate(360deg);
-          }
-        }
-      `}</style>
+      {/* shimmer styles moved to shared ShimmerText component */}
       <motion.div
         data-testid="message-assistant-loading"
         className="w-full mx-auto max-w-3xl px-4 group/message min-h-96"
@@ -294,8 +273,8 @@ export const ThinkingMessage = () => {
           )}
         >
           <div className="flex flex-col gap-2 w-full">
-            <div className="flex flex-col gap-4 text-muted-foreground">
-              <span className="loader"></span>
+              <div className="flex flex-col gap-4 text-muted-foreground">
+              <ShimmerText>Searching for web...</ShimmerText>
             </div>
           </div>
         </div>
