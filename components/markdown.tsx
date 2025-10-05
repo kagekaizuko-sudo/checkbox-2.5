@@ -170,7 +170,7 @@ const Markdown = memo(({ children, className = "" }: MarkdownProps) => {
       ),
 
       table: ({ children, ...props }) => (
-        <div className="w-full max-w-[22rem] sm:max-w-[48rem] my-6 overflow-x-auto scrollbar scrollbar-thumb-[#2f2f2f]">
+        <div className="w-full max-w-[22rem] sm:max-w-[48rem] my-6 overflow-x-auto scrollbar scrollbar-thumb-bubblescrollbar">
           <table
             className="w-full border-collapse text-sm rounded-2xl"
             {...props}
