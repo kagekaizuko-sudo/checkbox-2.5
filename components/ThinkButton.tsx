@@ -1,7 +1,7 @@
 import React, { useCallback, useState } from 'react';
 import { Button } from './ui/button';
 import type { UIMessage } from 'ai';
-import { DeepThing } from './icons';
+import { DeepThink2 } from './icons';
 
 interface ThinkButtonProps {
   selectedModelId: string;
@@ -77,18 +77,18 @@ const ThinkButton: React.FC<ThinkButtonProps> = ({
   return (
     <Button
       data-testid="think-button"
-      className={`rounded-full h-fit border transition-all duration-75 flex items-center gap-1 ${
+      className={`flex items-center gap-1.5 rounded-2xl border px-2 py-1.5 h-fit text-sm transition-all duration-200 ${
         isThinkingMode 
-          ? 'text-blue-500 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/30' // Light blue background with blue text
-          : 'bg-transparent hover:bg-accent/20' // Default state with hover
+          ? 'text-blue-500 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/30 hover:bg-blue-50 hover:text-blue-450 ' // Light blue background with blue text
+          : 'bg-transparent'
       }`}
       onClick={handleThinkClick}
       aria-label="Toggle Think Mode"
       variant="outline"
       size="default"
     >
-      <DeepThing />
-      <span>DeepThink</span>
+      <DeepThink2 />
+      <span>Think</span>
     </Button>
   );
 };
